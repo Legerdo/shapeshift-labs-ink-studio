@@ -1733,7 +1733,7 @@
     const moving = spec.solids.filter(s => s.part), authoredBounds = new Map();
     const staticBake = cache && !moving.length && !effects.length && !spec.tap && !marks &&
       !presentation.breakables && !S.keepRenderSdf && !st0.finish.paint && !globalThis.INK_DECAL_NEXT &&
-      !globalThis.INK_RETAIN_RENDER_SDF && !globalThis.INK_RAMPS;
+      !globalThis.INK_RETAIN_RENDER_SDF && !globalThis.INK_RETAIN_REFERENCE_SDF && !globalThis.INK_RAMPS;
     const bakeKey = staticBake ? cacheAPI.sceneKey(spec, st0,
       activeSolids.filter(s => s.kind === 'mesh').map(s => env.assets[s.asset])) : undefined;
     const baked = staticBake && cache.read('splats', bakeKey, cacheAPI.isPacked);

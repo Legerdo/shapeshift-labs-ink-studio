@@ -4,6 +4,8 @@ SDF assist uses the original sculpt to determine opaque coverage, depth and norm
 
 The mode is opt-in in the headless Node and CLI renderer. Start with finite static architecture. Use the existing splat path for animated parts and translucent materials. Retained fields are live scene data. Rebuild the authored scene when replaying a shot or changing the geometry.
 
+The [offline SDF reference](sdf-reference.md) traces light through the retained geometry for a side-by-side review.
+
 ## Enable on a sculpt
 
 Set `S.keepRenderSdf = true` before baking the static architecture. Use `look.sdfAssist` in `B.finish()` for its default render mode, or pass `sdfAssist` as a Node render option. JSON dioramas keep the source automatically when `finish.look.sdfAssist` is enabled.

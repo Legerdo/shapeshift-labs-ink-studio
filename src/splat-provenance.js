@@ -179,8 +179,10 @@ const SplatProvenance = (() => {
       result.splatFootprints = api.subset(world,indices);
     }
     if(world.engraving){const api=typeof Engraving==='undefined'?require('./engraving.js'):Engraving;result.engraving=api.subset(world,indices);}
-    if (result.renderSdfs && (indices.length !== world.count || indices.some((index,i)=>index !== i)))
+    if ((result.renderSdfs || result.referenceSdfs) && (indices.length !== world.count || indices.some((index,i)=>index !== i))) {
       delete result.renderSdfs;
+      delete result.referenceSdfs;
+    }
     const remap = new Map(indices.map((source, i) => [source, i]));
     if (world.curveLod) result.curveLod = curveLod(world.curveLod, i => remap.get(i));
     function take(source, stride, Type) {
