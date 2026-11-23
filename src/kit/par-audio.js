@@ -181,6 +181,11 @@
       inputs:{assets:'record',source:'record'},outputs:{value:'record',assets:'record',report:'record'},
       run({assets,source}) {return A.sampleInstrument.build(assets,source);}
     },
+    'audio.alignInstrumentSession': {
+      description:'Measure shared transients to calibrate the offsets and polarity of recording perspectives.',
+      inputs:{source:'record',assets:'record',options},outputs:{value:'record',report:'record'},
+      run({source,assets,options}) {return A.instrumentSession.align(source,assets,options);}
+    },
     'audio.analyzeInstrumentSession': {
       description:'Propose attacks, key-up, and loops for related takes on one recording clock.',
       inputs:{source:'record',assets:'record'},outputs:{value:'record',report:'record'},

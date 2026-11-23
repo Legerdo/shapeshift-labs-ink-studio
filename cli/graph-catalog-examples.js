@@ -18,6 +18,13 @@ const sessionTone={format:'ink-studio/instrument-session',version:1,id:'bench-ba
   perspectives:{close:{asset:'tone'}},registers:[61],dynamics:[{id:'firm',velocity:.74}],articulations:['tap'],
   takes:[{id:'one',key:61,dynamic:'firm',articulation:'tap',fromSample:0,toSample:1600,releaseSample:null}]};
 const builtSessionTone={op:'audio.buildInstrumentSession',inputs:{source:sessionTone,assets:{tone:fitTone}}};
+const transientTone={...fitTone,samples:fitTone.samples.map((sample,i)=>
+  sample+.25*Math.sin(.671*i*i)*Math.exp(-i/20))};
+const alignmentTone={
+  source:{...sessionTone,perspectives:{close:{asset:'tone'},room:{asset:'room'}}},
+  assets:{tone:transientTone,room:{...fitTone,samples:[...Array(29).fill(0),...transientTone.samples.map(x=>-.65*x)]}},
+  options:{syncSamples:[0]}
+};
 const fittedTone={op:'audio.fitInstrument',inputs:{source:fitTone}};
 const playableSound={op:'music.buildPlayableSound',inputs:{source:fitTone,options:{
   variants:[{id:'body',family:'contour'},{id:'air',family:'handoff'}]}}};
@@ -628,6 +635,7 @@ const specifications = {
   'audio.analyzeInstrumentSamples': {inputs:{assets:{tone:audio}}},
   'audio.auditionInstrumentRange': {inputs:{assets:{tone:audio},options:{offsets:[0]}}},
   'audio.buildSampleInstrument': {inputs:{assets:{tone:audio},source:{zones:[{id:'tiny',takes:['tone'],low:60,high:60,root:null}]}}},
+  'audio.alignInstrumentSession': {inputs:alignmentTone},
   'audio.analyzeInstrumentSession': {inputs:builtSessionTone.inputs},
   'audio.buildInstrumentSession': {inputs:builtSessionTone.inputs},
   'audio.auditionInstrumentSession': {nodes:{built:builtSessionTone},inputs:{instrument:link('built'),assets:link('built','assets'),
