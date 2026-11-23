@@ -1244,6 +1244,7 @@ const CMD = {
         '  sweep nearby <pin.json> <offsets.json> --out directory   vary numeric settings around the saved case',
         '  variants <id> --seeds 3,7,12 [--group silhouette|openness|wear --motion]  render a ranked seed contact sheet',
         '  atlas <id> [--directions 8 --pitches 0,0.7 --w 96 --h 96 --fps 12 --maps depth,normal,emission,silhouette]',
+        '    --adaptive-views [--min-directions 4 --view-probes 64 --view-error .045 --view-protect JSON --view-review]',
         '           [--clips plan.json] bake named sprite clips from one seekable source',
         '             [--cutout-mipmaps coverage|average --alpha-cutoff 0.5]  export a transparent sprite atlas',
         '  camera-review <scene> --from 0 --to 2 --frames 5 --w 160 --h 96   export-sized frames and framing checks',
@@ -2521,12 +2522,26 @@ const CMD = {
     const cutoutMipmaps = opt['cutout-mipmaps'] === undefined || opt['cutout-mipmaps'] === 'off' ? undefined :
       { mode: opt['cutout-mipmaps'] === true ? 'coverage' : opt['cutout-mipmaps'], cutoff: num('alpha-cutoff', .5) };
     if (opt['alpha-cutoff'] !== undefined && !cutoutMipmaps) die('--alpha-cutoff needs --cutout-mipmaps');
-    const atlas = spriteAtlas(w, { width: num('w', 96), height: num('h', 96), directions: num('directions', 8),
+    const chooseViews=onOffOption('adaptive-views');
+    const viewReview=onOffOption('view-review');
+    const controls=['min-directions','view-probes','view-error','view-protect','view-pose-samples'];
+    if (!chooseViews && (viewReview || controls.some(key=>opt[key]!==undefined)))
+      die('View assessment controls need --adaptive-views');
+    if (opt['view-protect']!==undefined && typeof opt['view-protect']!=='string')
+      die('--view-protect needs a JSON array of target selectors');
+    const pitches=opt.pitches===undefined ? undefined : list('pitches');
+    if (viewReview && (clips || times.length!==1 || (pitches?.length ?? 1)!==1))
+      die('--view-review takes one pose time and one elevation');
+    const adaptive=chooseViews ? { minDirections:num('min-directions'),probes:num('view-probes'),
+      tolerance:num('view-error'),poseSamples:num('view-pose-samples'),
+      ...(opt['view-protect']!==undefined && {protect:JSON.parse(opt['view-protect'])}) } : undefined;
+    const settings={ width: num('w', 96), height: num('h', 96), directions: num('directions', 8),
       columns: num('cols', num('directions', 8)), maps: opt.maps ? String(opt.maps).split(',') : [],
       pivot: opt.pivot ? list('pivot') : w.cam.target, view: view(), yaw: num('yaw', w.cam.yaw),
-      pitches:opt.pitches===undefined?undefined:list('pitches'),...(clips===undefined?{times}:{clips}),
-      fps,pose,cutoutMipmaps,normalSpace:opt['normal-space'] });
+      pitches,...(clips===undefined?{times}:{clips}),fps,pose,cutoutMipmaps,normalSpace:opt['normal-space'],adaptive };
+    const atlas=spriteAtlas(w,settings);
     writeAtlas(directory, atlas);
+    if (viewReview) require('./impostor-view-review.js').review(w,atlas,settings,path.join(directory,'review'));
     console.log('wrote', directory, atlas.metadata.frames.length, 'frames');
   },
   'transition-review'() {

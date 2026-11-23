@@ -428,6 +428,8 @@ Run `node scripts/experiment-splat-sampling.js <output-directory>` to reproduce 
 
 ## Directional sprite atlas
 
+Use [visible-error view selection](impostor-atlases.md#choose-view-angles-by-visible-error) to allocate directional tiles where the silhouette, gaps or a protected highlight changes quickly.
+
 ```sh
 ink-studio atlas examples/art-pipeline.js --t 1.2 --w 92 --h 76 --directions 8 --cols 4 --maps depth,normal,emission
 ink-studio atlas examples/art-effects.js --from 0 --to 1.2 --fps 12 --directions 8 --pivot 0,0,0

@@ -63,6 +63,27 @@ right, Y up, and +Z toward the viewer of each baked tile. The default is
 Build the relightable Signal Courier example with
 `node examples/baked-sprite-normals.cjs courier-normals.html`.
 
+### Choose view angles by visible error
+
+Add `--adaptive-views` when the asset needs more headings around a fast-changing detail. The baker renders probe views at the export's art resolution. For each probe it picks the tile the impostor player would use and measures the silhouette, closed holes and narrow gaps, and protected detail. It starts with an even set on each requested elevation and adds views that most reduce visible error, including views across the orbit seam. The same registered angles apply to every exported pose.
+
+```sh
+ink-studio atlas examples/adaptive-impostors/aperture-relay.js \
+  --adaptive-views --directions 10 --min-directions 4 --view-probes 80 --view-error .03 \
+  --view-protect '[{"material":"protected-glint"}]' --w 100 --h 96 --raw \
+  --maps depth,normal,emission,silhouette --view-review --out aperture-relay
+```
+
+- `--directions` bounds the number of saved headings per elevation. `--min-directions` sets the evenly spaced anchors. A smooth orbit can stop at that minimum.
+- `--view-probes` sets the assessment grid per elevation. The baker rounds up to include every anchor exactly. `--view-error` is a threshold on the weighted error. The report records residual error when the budget or sampling grid limits the result.
+- Highlight scoring includes renderer-protected details, visible emission, and matching selectors passed to `--view-protect`. Use an object, material, or tag selector to give a small detail a say in the allocation.
+- Exported animation needs a seekable source. `--view-pose-samples` sets how many evenly selected export poses to assess, up to eight. The worst assessed pose drives each tile comparison. Captures use a fixed orthographic camera registration and independent frame histories.
+- All elevations participate in nearest-view selection and error scoring. Adaptive assessment has a combined limit of eight million probe pixels and 192 output views per pose.
+
+Use `spriteAtlas(world, { adaptive: { minDirections, probes, tolerance, poseSamples, protect }, ...options })` in Node. The atlas uses the ordinary color and auxiliary maps, with the selected yaw and pitch on each tile. `atlas.json` also records the assessment poses, component weights, selected headings and insertion errors under `adaptiveViews`.
+
+With one pose and one elevation, `--view-review` writes an offline orbit comparison under `review/`. It shows the direct render, an evenly spaced bake with the same number of views, and the selected bake on angles between the assessment probes. The overlays identify silhouette, gap and protected-detail disagreements. The directory includes the comparison clips, uniform atlas and JSON measurements.
+
 ### Bake a set of moves from one rig
 
 Pass `--clips plan.json` to bake named moves into a single atlas. Each move

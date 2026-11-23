@@ -862,6 +862,7 @@ The CLI and Node `render()` use the CPU renderer. Use the [browser renderer](doc
 | `project pack <scene.json> --out project.json` | Package an editable diorama and its dependencies for the editor, browser, and CLI. |
 | `project inspect <project.json>` | Show project revisions, toolkit version, and retained files. |
 | `atlas <scene> --directions 8` | Export an RGBA atlas with registered pivots and optional relighting maps. |
+| `atlas <scene> --adaptive-views --view-review` | Allocate views by silhouette, gap and protected-detail error, with a held-out orbit comparison. |
 | `pose-review <scene> --directions 8` | Render named poses and breakdowns as color and silhouette tiles at sprite resolution. |
 | `motion-review <scene> [--finding kind-or-id]` | Report motion findings, focus ranges, and evidence from a scene that exposes Motion Review. |
 | `clip-sequence <scene> [--handoff 0]` | Report clip instances, retimed keys and cues, and measured handoffs. |
