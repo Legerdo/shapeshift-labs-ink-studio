@@ -212,7 +212,7 @@
         distance:null,gain:0,bands:{low:0,mid:0,high:0},cutoff:22000,delay:0};
       const range=V.dist(position,listener.position), spread=distanceGain(range,cue.distance);
       let apparent=position, departure=listener.position, route, routedTravel, delay=0, cutoff=22000,
-        blocker, attenuation=[1,1,1], portal=false;
+        blocker, opening, attenuation=[1,1,1], portal=false;
       const exclude=[...listener.exclude,...(at.entity?[at.entity]:[]),...(input.exclude?[input.exclude]:[])];
       if(cue.occlusion&&spread>0&&query){
         if(acoustic){
@@ -227,6 +227,7 @@
               // The cue owns distance falloff. Keep just the path and medium transmission.
               attenuation=bands.map(band=>amplitude(Math.max(0,reading.value.bands[band].lossDb-reading.value.distanceLossDb)));
               if(point(reading.value.apparentSource))apparent=reading.value.apparentSource;
+              if(id(reading.value.opening))opening=reading.value.opening;
               const first=reading.value.path?.segments?.[0]?.to;
               if(point(first))departure=first;
               delay=reading.value.delaySeconds??0;
@@ -312,7 +313,7 @@
         status:spread===0?'out-of-range':route==='blocked'?'blocked':blocker?'occluded':'spatial',
         position,apparentSource:apparent,distance:range,gain:radiation?Math.max(...Object.values(levels)):levels[sound?.band??'mid'],
         bands:levels,cutoff,...(direct&&{radiation:direct}),
-        ...(blocker&&{blocker}),...(route&&{acoustic:route}),...(taps?.length&&{reflections:taps}),
+        ...(blocker&&{blocker}),...(route&&{acoustic:route}),...(opening&&{acousticOpening:opening}),...(taps?.length&&{reflections:taps}),
         delay:propagationDelay?delay:0,...timing};
     }
 
