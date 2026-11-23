@@ -1450,7 +1450,16 @@ function renderFrame(world, o, preparedPalettes) {
     return CurveSplat.prepare(replacement?.data ?? d, replacement ? 0 : i * 16, position, replacement ? 1 : SC[i], AL[i], camera, clips, window,
       forShadow ? undefined : curveWidthAt?.(i), pattern, !forShadow && strandTrace);
   }
-  const probes = ProbeLighting.create(world,o.bounceProbes,baseSky,sun,o[reconstructionSource]);
+  const spillLights = o.areaLights === false ? [] : EmissiveFinishes.spillLights(emissive, { x:X, y:Y, z:Z, alpha:AL });
+  const probes = ProbeLighting.create(world, o.bounceProbes, baseSky, sun, o[reconstructionSource], {
+    time: t, emissiveTime: motion.emissive, lights: [...areaLights, ...spillLights], dynamic: o.dynamicBounce
+  });
+  if (counters && probes?.stats) {
+    const stats = counters.bounceProbes ??= { sites: 0, updated: [], rays: 0 };
+    stats.sites = Math.max(stats.sites, probes.stats.sites);
+    stats.rays += probes.stats.rays;
+    for (const id of probes.stats.updated) if (!stats.updated.includes(id)) stats.updated.push(id);
+  }
   function receivesDiffuse(i) {
     return i >= 0 && i < baseCount && AL[i] >= 1 && !(Math.round(d[i*16+11]) & (16 | 32 | 64 | 128 | 256 | 2048 | 32768)) &&
       !world.opticalSplats?.[i*OpticalMaterials.STRIDE+3] && !surface?.reveals(i) &&
@@ -1474,7 +1483,6 @@ function renderFrame(world, o, preparedPalettes) {
     sampleFrames(world, t), coverageMode, rayAt, surface?.reveals);
   const optical = world.opticalSplats && OpticalMaterials.frame(world, { view: V, eye, ortho },
     sampleFrames(world, t), { x: X, y: Y, z: Z });
-  const spillLights = o.areaLights === false ? [] : EmissiveFinishes.spillLights(emissive, { x:X, y:Y, z:Z, alpha:AL });
   const spotLighting = Array.isArray(volumeLighting?.spots) && volumeLighting.spots.some(light => light?.surfaceIntensity !== undefined)
     ? prepareVolumeLight() : undefined;
   const directLight = AreaRaster.createLighting([...areaLights,...spillLights],world,d,AL,
