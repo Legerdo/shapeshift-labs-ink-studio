@@ -924,12 +924,17 @@ function buildPreview(id = pos[0], options) {
   return Preview.override(world, opt, lib());
 }
 const previewPasses = () => require('./look-preview.js').preview(opt);
-function outputPalette() {
-  const file = opt['output-palette'];
-  if (file === undefined) return image => image;
-  if (typeof file !== 'string' || opt.text) die('Use --output-palette policy.json on raster renders or clips');
-  const policy = JSON.parse(fs.readFileSync(path.resolve(file), 'utf8'));
-  return require('./sequence-palette.js').prepareOutputPalette(policy);
+function outputFinish() {
+  const paletteFile = opt['output-palette'], gradeFile = opt['output-grade'];
+  if (paletteFile === undefined && gradeFile === undefined) return image => image;
+  if (opt.text || [paletteFile, gradeFile].some(file => file !== undefined && typeof file !== 'string'))
+    die('Use --output-grade stack.json and --output-palette policy.json on raster renders or clips');
+  const palette = paletteFile && require('./sequence-palette.js').prepareOutputPalette(JSON.parse(fs.readFileSync(path.resolve(paletteFile), 'utf8')));
+  const grade = gradeFile && require('./output-grade.js').prepareOutputGrade(require('./color-stack.js').override(gradeFile));
+  return image => {
+    const graded = grade ? grade.apply(image) : image;
+    return palette ? palette(graded) : graded;
+  };
 }
 const reviewSidecars = diagnostics => [...(diagnostics?.suffixes ?? []), ...(opt.text ? ['.txt'] : [])];
 const textSidecar = file => file.replace(/\.(?:a?png)$/i, '') + '.txt';
@@ -1027,6 +1032,7 @@ const CMD = {
         '  palette compare <scene|checkpoint> <palettes.json> [--out directory]   apply alternatives to one captured shot',
         '  palette sequence <plan.json> [--out directory]   allocate one pinned palette across multiple shots',
         '  render/clip output: --output-palette policy.json   resolve the final raster to a shared palette',
+        '  render/clip output: --output-grade stack.json   grade the final raster before output palette resolve',
         '  palette save-look <approved.json> [--pack pack.json] [--out pack.json]   save approved palette findings as a look',
         '  palette check <scene> <plan.json> [--out directory]   export a PNG board and check palette assertions',
         '  palette chart <chart.json> [--type chart] [--format png|data]   export an indexed swatch, bar or pair chart',
@@ -1150,6 +1156,7 @@ const CMD = {
         '  render, clip, transition-review, sim render: --recipe <shot.json>   save reproducible review inputs',
         '  shot replay <shot-or-bundle.json> --out <image.png> [--root project | --shot ID]   verify the saved render',
         '  shot approve <scene> [--plan plan.json] --out report.json [--frame N] [--report-only]',
+        '  shot grade-match <plan.json> [--out directory]   match chroma from shared objects',
         '  shot light-paint <scene> --shot-lighting rig.json --out targets.html [--t seconds] [--w W --h H]',
         '  shot light-fit <scene> --shot-lighting rig.json --targets targets.json --out folder [--evaluations N] [--interactive]',
         '  render <scene.json> --asset-pack <pack-or-bundle.json> [--environment-preset pack/preset]   install and select a reusable look',
@@ -2168,6 +2175,14 @@ const CMD = {
     console.log(warn.length ? 'warnings:\n  ' + warn.join('\n  ') : 'no warnings');
   },
   shot() {
+    if (pos[0] === 'grade-match') {
+      if (pos.length !== 2 || Object.keys(opt).some(key => key !== 'out') || opt.out === true)
+        die('Use shot grade-match <plan.json> [--out directory]');
+      const directory = outputFile('shared-object-grade');
+      const report = require('./shared-object-grade-command.js').run(pos[1], directory, { build, pose, kit: lib() });
+      console.log('Chroma error', report.beforeError.toFixed(4), '→', report.afterError.toFixed(4) + '. Wrote', directory);
+      return;
+    }
     if (pos[0] === 'light-paint' || pos[0] === 'light-fit') {
       const paint = pos[0] === 'light-paint';
       if (pos.length !== 2 || typeof opt.out !== 'string' ||
@@ -2230,7 +2245,7 @@ const CMD = {
     Shot.replay(pos[1],{out:opt.out,root:opt.root,entry:__filename});
   },
   render() {
-    const applyPalette = outputPalette();
+    const finishOutput = outputFinish();
     const w = buildPreview(), diagnostics = previewPasses(),
       t = num('t', 0);
     const suffixes = reviewSidecars(diagnostics);
@@ -2249,7 +2264,7 @@ const CMD = {
       shot?.finish(f,{suffixes});
       return;
     }
-    const output = save(w.id + '.png', R.upscale(applyPalette(im), opt.px1 ? 1 : im.px));
+    const output = save(w.id + '.png', R.upscale(finishOutput(im), opt.px1 ? 1 : im.px));
     diagnostics?.write(output, { times: [t] });
     shot?.finish(output,{suffixes});
   },
@@ -3141,7 +3156,7 @@ const CMD = {
     save(w.id + '-turn.png', R.grid(imgs, num('cols', 4), labs));
   },
   clip() {
-    const applyPalette = outputPalette();
+    const finishOutput = outputFinish();
     const join = onOffOption('loop-join') && require('./loop-join.js');
     const w = buildPreview(), diagnostics = previewPasses(),
       fps = num('fps', 12),
@@ -3165,11 +3180,11 @@ const CMD = {
       const im = replay ? R.sequenceOutput(frame, ()=>replay.sample(t, draw)) : draw(t, undefined, k / (n - 1));
       diagnostics?.capture(im, opt.px1 ? 1 : im.px);
       ts.push(t);
-      frames.push(displayFrame(applyPalette(im), w));
+      frames.push(displayFrame(finishOutput(im), w));
     }
     const end = from + n / fps;
     const audit = join && join.inspect({ first: frames[0], penultimate: frames[n - 2], last: frames[n - 1],
-      endpoint: displayFrame(applyPalette(replay ? replay.sample(end, draw) : draw(end, undefined, 1)), w), from, fps, count: n });
+      endpoint: displayFrame(finishOutput(replay ? replay.sample(end, draw) : draw(end, undefined, 1)), w), from, fps, count: n });
     fs.mkdirSync(path.dirname(f), { recursive: true });
     PNG.animate(f, frames, fps);
     if (audit) {

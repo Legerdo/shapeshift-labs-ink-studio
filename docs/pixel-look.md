@@ -243,6 +243,7 @@ from zero to one to blend its result into the color entering that step.
 | `saturation` | `factor` scales the distance from luminance. Zero gives grayscale and one is neutral. |
 | `hue` | `degrees` rotates the hue with the channel minimum and maximum held fixed. |
 | `channelMix` | `matrix` contains RGB weights for each of the three output channels. Optional `offset` adds an RGB triple. |
+| `oklabChroma` | `correction` has two `[offset, a, b]` rows for relative OKLab chroma. `maxShift` caps the correction. The full-strength step uses working sRGB and preserves OKLab lightness. |
 | `curves` | `curves` takes the same luminance ramp or RGB channel curves as `look.colorCurves`. |
 | `lut` | `lut` takes a native 3D LUT, including a JSON import from `.cube`. |
 | `paletteRemap` | `remap` addresses the original palette slots by swatch, index, or role. Rules blend against the color at this point in the stack. Protected slots retain their original colors through the entire grade. |
@@ -266,6 +267,63 @@ node cli/ink-studio.js render lab/data-shrine.json --t 4 --pitch .31 --yaw .55 -
 
 The same `--color-stack` option works with `sim render`. A JSON file
 overrides the authored scene stack. `off` bypasses scene and surface stacks.
+
+## Match a grade from shared objects
+
+Select objects or materials that can be seen in both the source and the
+approved reference. Ink samples their visible midtones and fits one global
+chroma correction relative to OKLab lightness. Different camera angles and
+light rigs can supply the two frames. Source shadows, highlights, and
+exposure keep their lightness through the correction, subject to 8-bit
+output rounding. `report.json` shows the remaining difference per object.
+
+```sh
+ink-studio shot grade-match examples/shared-object-grade/courier.json --out courier-grade
+```
+
+Open `courier-grade/index.html` to inspect the selected pixels, compare
+swatches, or view the three frames in lightness only. Reuse the exported
+`grade.json` on the same source look with `render` or `clip`.
+
+```sh
+ink-studio render examples/courier-shot-lighting.js --w 160 --h 112 --px 1 --yaw -0.13 --zoom 1.024 \
+  --color-stack examples/shared-object-grade/cool-dailies.json \
+  --shot-lighting examples/painted-shot-lighting/starting-rig.json \
+  --output-grade courier-grade/grade.json --out courier-matched.png
+```
+
+`--output-grade` applies an ordinary RGB-only color stack to the completed
+raster. With `--output-palette` it runs before the final palette resolve.
+It is recorded as a dependency in a shot recipe. Use `--output-grade` to
+reproduce the fit after the source scene's original grading and rendering.
+
+```json
+{
+  "format": "ink-studio/shared-object-grade",
+  "version": 1,
+  "width": 160,
+  "height": 112,
+  "source": { "scene": "arrival.js", "time": 1.2 },
+  "reference": { "scene": "approved.js", "time": 0 },
+  "anchors": [
+    { "id": "coat", "select": { "object": "courier", "material": "cloak" } },
+    { "id": "lamp", "select": { "object": "lantern", "material": "brass" },
+      "approved": "#9c7458", "weight": 1.5 }
+  ]
+}
+```
+
+Scene, `shotLighting`, and `colorStack` paths are relative to the plan. A
+shot can also specify its `seed`, native camera overrides, `raw`, and
+`transparent`. Capture uses the native scene raster and material ownership
+before screen composites and render graphs. Anchors accept one shared
+`select` or per-shot `source` and `reference` selections. Each can add
+`region: [x, y, width, height]` in native art pixels. Use a region when only
+part of a surface is comparable between the shots. An `approved` hex can
+supply the target chroma instead of sampling the reference color.
+
+Node callers can use `ink.fitSharedObjectGrade(source, reference, { anchors })`
+with native RGB frames and the aligned `objectId` and `materialId` passes.
 
 ## Color spaces and numeric ranges
 
