@@ -133,6 +133,8 @@ function command(pos, opt, settings) {
     return require('./attention-handoff.js').command(pos[1],opt,settings);
   if(pos[0]==='check-sync'&&pos.length===2)
     return require('./delivered-sync.js').command(pos[1],opt,settings);
+  if(['blind-review','blind-review-score'].includes(pos[0]))
+    return require('./blind-av-review.js').command(pos,opt,settings);
   if(pos[0]==='render-av'&&pos.length===2)
     return require('./audiovisual-take.js').command(pos[1],opt,settings);
   const usage = 'Use take sample <take.json> --frame N [--iteration N --resume checkpoint.json --checkpoint file.json --out report.json]';
