@@ -198,7 +198,7 @@ patches and PCM; external CLAP instrument renders use the existing offline path.
 
 Phrase history counts a full segment pass when an eligible listening track
 actually sounded. A phrase can change at the loop head according to who has
-already been heard. Theme history uses admitted mapped notes. The join record
+already been heard. Theme history uses admitted mapped notes. [Motif memory across branches](music-motif-branch-memory.md) can use their performed rhythm and intervals to build a recall on another instrument. The join record
 includes the committed intent and arrival, the requested and realized exit,
 entry source and phrase, prior listening and route, held and releasing pitches
 with phase and gate frames, and which effects continued.

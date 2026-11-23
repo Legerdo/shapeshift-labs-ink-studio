@@ -1,6 +1,6 @@
 /* A causal adaptive score on the output sample clock. */
 (function (K) {
-  const P=K.procedural, A=P.musicProduction, F=P.musicPhraseRoutes, B=P.musicHarmonicBridge;
+  const P=K.procedural, A=P.musicProduction, F=P.musicPhraseRoutes, B=P.musicHarmonicBridge, R=P.musicMotifRecall;
   const {check,fields,record,finite,integer,id,clamp,db,hash}=P.musicInstruments;
   const {layerFactors:validLayerFactors,mergeLayerFactors}=P.adaptiveRehearsalTrace;
   const onset=F.onset, eps=1e-8, gainAtFrame=P.musicLayerGain.at;
@@ -26,8 +26,9 @@
     'Invalid live score clock or voice limits');
     const streams=P.musicLiveStreams.open(rate,options.streams,options.readPage,options.pageSize,options.maxPages);
     const stemGroups=streams.stemGroups(options.stemGroups);
-    const {compiled,segments,known,memory,routes,phrasing,stingers,holds,rules}=
+    const {compiled,segments,known,memory,routes,recalls,phrasing,stingers,holds,rules}=
       P.musicTimeline.prepare(sources,spec,assets,undefined,new Map(),streams.streams);
+    const versions=memory?.versions;
     const hasBridges=[...rules.values()].some(edge=>edge.harmonicBridge);
     const musicNames=[...new Set([...Object.values(segments).map(row=>row.source),
       ...Object.values(spec.thematic?.routes ?? {}).flat().map(row=>row.source),
@@ -143,7 +144,16 @@
     function begin(section,position,layers={},fadeIn=0,kind='segment',reason='entry',phase={frame,position},selected) {
       const segment=segments[section];
       const selection=selected ?? (kind==='segment' ? choose(section,reason) : {source:segment.source,phrase:null});
-      const notes=indexes.get(selection.source);
+      let notes=indexes.get(selection.source), recall;
+      const config=kind==='segment'&&reason!=='repeat'&&recalls.get(section);
+      if(config){
+        memory.at(time());
+        const score=compiled[selection.source], levels={...segment.layers,...layers};
+        const result=R.realize(config,versions.select(config),score,position,segment.end,levels);
+        recall=result.report;
+        if(result.notes.length)notes=[...notes,...result.notes.map((note,i)=>({note,part:config.part,
+          track:score.tracks[config.part],at:note.time,recall:recall.notes[i]}))].sort((a,b)=>a.at-b.at);
+      }
       let low=0,high=notes.length;
       while (low<high) {
         const mid=(low+high)>>>1;
@@ -151,7 +161,8 @@
         else high=mid;
       }
       const clip={id:++clipId,section,segment,...selection,first:frame,position,phase,kind,notes,next:low,
-        stop:Math.max(frame+1,frameAt(phase,segment.end)),layers:{...segment.layers,...layers},fadeIn,spoke:false};
+        stop:Math.max(frame+1,frameAt(phase,segment.end)),layers:{...segment.layers,...layers},fadeIn,spoke:false,
+        ...(recall&&{recall})};
       clip.visit={first:frame,position,phase,stop:clip.stop};
       clip.listen=phrasing.tracks(section);
       clip.roomCut=P.musicCueMap.cursor(compiled[clip.source].cue?.roomCuts ?? []);
@@ -171,6 +182,7 @@
     function finish(clip,tail=0,keepVoices=false) {
       if (clip.finished) return;
       clip.finished=true;
+      for(const note of clip.recall?.notes??[])if(note.status===undefined||note.status==='after-fade')note.status='departed';
       if (clip.kind==='segment' && clip.spoke && clip.position<=clip.segment.start+eps && frame>=clip.stop)
         phrasing.heardPhrase(clip.phrase,clip.section,clip.source,time());
       memory?.finish(clip.id,time());
@@ -233,6 +245,12 @@
         ...(hasBridges && {frequency:note.frequency*2**((note.play.bend ?? 0)/1200),articulation:note.play.articulation}),
         choke:track.mix.choke ? (persistent ? 'live/' : clip.source+'/')+track.mix.choke : null};
       if (clip.kind==='harmonic-bridge') return voice;
+      if(event.recall){
+        if(layerGain(part)>0&&(!clip.listen||clip.listen.includes(part)))clip.spoke=true;
+        return voice;
+      }
+      const heard=versions?.matches(clip.source,part,note);
+      if(heard?.length)voice.motif={hits:heard,first:layerGain(part)>0?frame:null};
       if (clip.kind==='segment' && layerGain(part)===0)
         voice.unheard={from:note.time,gain:row.renderGain,velocity:note.velocity};
       else creditNote(voice,note.time,row.renderGain,note.velocity);
@@ -242,6 +260,10 @@
       const voice=request.stream ? {...streams.voice(request.stream,frame),stream:request.stream,
         scoreAccent:request.scoreAccent,trigger:request.trigger} : addNote(request);
       if (!voice) return 'silent';
+      if(request.event?.recall){
+        voice.recall=request.event.recall;
+        voice.recall.status='admitted';
+      }
       const choked=voice.choke ? voices.filter(row=>row.choke===voice.choke && row.first<frame && row.last>frame) : [];
       for (const row of choked) retire(row,frame+edgeFade);
       profile.choked+=choked.length;
@@ -261,6 +283,7 @@
     }
     function dismiss(request,reason) {
       profile.dropped++;
+      if(request.event?.recall)request.event.recall.status='dropped';
       profile.foregroundDropped+=Number(request.foreground);
       log('voice-dropped',{part:request.event?.part ?? request.stream?.name,reason,foreground:request.foreground});
       if (request.trigger) missed(request.trigger,request.stream.name,reason);
@@ -309,7 +332,10 @@
         }
         if (clip.kind==='harmonic-bridge') {
           event.audit.status=layerGain(event.part)>0 ? admit({clip,event,foreground:false,priority:-100},false) : 'muted';
-        } else admit({clip,event,foreground:fg.has(event.part),priority:priorities[event.part] ?? 0});
+        } else {
+          const status=admit({clip,event,foreground:fg.has(event.part),priority:priorities[event.part] ?? 0});
+          if(event.recall)event.recall.status=status==='played'?'admitted':status;
+        }
       }
     }
     function accent(section,kind,trigger,resource) {
@@ -583,7 +609,8 @@
         from:outgoing.section,to:active.section,via:via.slice(),
         exit:{source:outgoing.source,authored:edge.waitForExit ? edge.exit : null,
           played:Math.min(outgoing.segment.end,playhead(outgoing)),tail:edge.tail},
-        entry:{source:active.source,offset:edge.entry,phrase:active.phrase,themeMatch:active.themeMatch,fadeIn:edge.fadeIn},
+        entry:{source:active.source,offset:edge.entry,phrase:active.phrase,themeMatch:active.themeMatch,fadeIn:edge.fadeIn,
+          ...(active.recall&&{recall:active.recall})},
         ...(switchPoint && {switchPoint}),heard:hearing,carry:{held,echoes:[...echoes].filter(([,echo])=>echo.until>frame).map(([key])=>key),
           room:true,roomLastInputFrame:roomLastInput,bridge:edge.bridge ?? null,commonTone:edge.commonTone ?? null,
           ...(harmony && {harmonicBridge:{...harmony,pickup:pending.pickup ?? null}})}};
@@ -718,6 +745,24 @@
           const gain=fadeAt(voice,frame)*voice.strength, vl=pair[0]*gain,vr=pair[1]*gain;
           if (hasBridges && voice.clip?.kind==='segment' && Math.max(Math.abs(vl),Math.abs(vr))>1e-6)
             voice.lastSound=frame;
+          if(voice.motif||voice.recall){
+            const level=layerGain(voice.part);
+            if(voice.motif){
+              const {clip,motif}=voice;
+              if(clip.finished)voice.motif=null;
+              else if(!level)motif.first=null;
+              else if(Math.max(Math.abs(vl),Math.abs(vr))>1e-6){
+                const first=motif.first??frame, local=playhead(clip)+(first-frame)/rate;
+                versions.record(clip.source,clip.section,clip.id,motif.hits,first/rate,local,
+                  local+Math.max(0,Math.min(voice.off,voice.last)-first)/rate);
+                voice.motif=null;
+              }
+            }
+            if(voice.recall&&level>0&&Math.max(Math.abs(vl),Math.abs(vr))>1e-6){
+              Object.assign(voice.recall,{status:'played',firstFrame:frame});
+              voice.recall=null;
+            }
+          }
           if (gap) {
             diagnostics.stream(voice,gap,frame,undefined,voice.trigger);
             if (!gap.recovered) {
@@ -840,6 +885,8 @@
           ...(pending.switchPoint && {switchPoint:pending.switchPoint})} : null,
         clock:control ? machine.inspect(control) : null, heard:phrasing.counts(),
         ...(memory && {themes:memory.at(time())}),
+        ...(versions&&{themeVersions:versions.inspect()}),
+        ...(active.recall&&{recall:active.recall}),
         ...(Object.keys(layerGains).length && {layerGains}),
         ...(Object.keys(layerFactors).length && {layerFactors}),
         ...(scoring && {scoring:scoring.inspect(frame)}),
