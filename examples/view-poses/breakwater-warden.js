@@ -103,7 +103,23 @@ function breakwaterWarden({KIT:K,makeBuilder,makeSculpt}) {
       tube([start,end],.020,copper,'staff',.031);
     }
     ball(along(cage,.225),[.057,.079,.060],gold,'staff',.035);
+    if (controls?.relayShot) Object.assign(S,{captureAlbedo:true,keepRenderSdf:true,keepReferenceSdf:true});
     S.bake();
+    if (controls?.relayShot) {
+      // The copper floor and pale teal wall return color below the hard key.
+      box([0,-.53,-.43],[3.75,.09,3.3],stone,'floor',.10,.03);
+      box([2.26,.94,-.91],[.085,1.42,1.54],teal,'return-wall',.085,.05);
+      box([0,1.00,-1.52],[2.0,1.54,.12],indigo,'back-wall',.105,.04);
+      for (const x of [-1.23,-.57,.71,1.38]) {
+        box([x,1.00,-1.35],[.036,1.52,.048],steel,'seams',.079,.018);
+        box([x,.24,-1.28],[.12,.070,.046],teal,'mounting-plates',.045,.019);
+      }
+      box([-.98,.888,-.79],[.16,.49,.12],copper,'signal-box',.046,.06);
+      box([-.98,1.00,-.653],[.11,.16,.016],indigo,'signal-box',.035,.026);
+      box([-.98,1.07,-.631],[.085,.014,.009],cool,'signal-display',.022,.011);
+      box([.94,1.88,-1.25],[.53,.08,.08],steel,'wall-rail',.064,.032);
+      S.bake();
+    }
     const world=B.finish({cam:{target:[0,.98,0],yaw:-42*Math.PI/180,pitch:.14,dist:4.65,ortho:true,sway:0},
       radius:4,detail:24,dither:0,look:{splatCoverage:'continuous'}});
     const parts={
@@ -118,6 +134,12 @@ function breakwaterWarden({KIT:K,makeBuilder,makeSculpt}) {
       pose(time,_dt,actor) { actor.pose.head={rot:[0,3*Math.sin(time*1.3),1.5*Math.sin(time*.9)]}; }});
     world.anim.update(0,0);
     world.warden={puppet,asset:structuredClone(asset)};
+    if (controls?.relayShot) {
+      world.cam={...world.cam,target:[0,1.08,.04],dist:3.36,yaw:-.29,pitch:.073};
+      world.look={...world.look,sdfAssist:{posed:true}};
+      world.liveSun={direction:V.norm([-.88,.43,.29]),ambient:.40,intensity:.69,
+        shadows:true,mapSize:512,bias:.018,filter:0};
+    }
     return world;
   }
   return {id:'breakwater-warden',name:'Breakwater Warden',seed:63,build};
