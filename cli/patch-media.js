@@ -87,6 +87,28 @@ async function* nativeVideoFrames(input, {width,height,executable='ffmpeg',signa
   } finally { await process.stop(); }
 }
 
+async function decodeFloatAudio(input, {track,maxSamples,executable='ffmpeg',signal}) {
+  const process=ffmpeg(executable,['-xerror','-protocol_whitelist','file,pipe','-i',localFile(input),
+    '-map','0:a:'+track,'-vn','-sn','-dn','-c:a','pcm_f32le','-f','f32le','pipe:1'],signal);
+  const bytes=Buffer.alloc(maxSamples*4);
+  let filled=0;
+  try {
+    for await (const chunk of process.stream) {
+      if (filled+chunk.length>bytes.length) throw new RangeError('Decoded audio exceeds its sample budget');
+      bytes.set(chunk,filled); filled+=chunk.length;
+    }
+    await process.finish();
+  } finally { await process.stop(); }
+  if (!filled||filled%4) throw new Error('Delivery ended with a partial float audio sample');
+  const samples=new Float32Array(filled/4);
+  for (let i=0;i<samples.length;i++) {
+    const sample=bytes.readFloatLE(i*4);
+    if (!Number.isFinite(sample)) throw new Error('Non-finite audio sample from delivery');
+    samples[i]=sample;
+  }
+  return samples;
+}
+
 async function audioSource(input, {video,executable='ffmpeg',duration,signal,procedural}) {
   if (input!=='video') return readAudioSource(localFile(input),procedural);
   if (!video || video==='-') throw new TypeError('--audio video needs a local video file');
@@ -113,4 +135,4 @@ async function audioSource(input, {video,executable='ffmpeg',duration,signal,pro
   }
   return {sampleRate,channels,samples};
 }
-module.exports={videoFrames,nativeVideoFrames,audioSource,parseRate,parseSize};
+module.exports={videoFrames,nativeVideoFrames,decodeFloatAudio,audioSource,parseRate,parseSize};
