@@ -73,11 +73,23 @@ const buttons = options.map(([name], i) => {
   button.addEventListener('click', () => select(i));
   return button;
 });
-function startTime() {
-  return video.seekable.length ? video.seekable.start(0) : 0;
+let active = 0;
+function startTime(index) {
+  const seekable = video.seekable.length ? video.seekable.start(0) : 0;
+  if (index !== 0) return seekable;
+  const [n, d] = report.delivery.timeBase.split('/').map(Number);
+  const first = report.delivery.firstPts * n / d;
+  const span = (report.source.endFrame - report.source.firstFrame) / report.source.fps;
+  // Some containers expose an edit-list lead on the player timeline.
+  const retainsLead = Math.abs(video.duration - (first + span)) < 2 / report.source.fps;
+  return retainsLead ? Math.max(seekable, first) : seekable;
 }
-function select(i, time = Math.max(0, video.currentTime - startTime())) {
-  video.onloadedmetadata = () => { if (time > 0) video.currentTime = startTime() + time; };
+function select(i, time = Math.max(0, video.currentTime - startTime(active))) {
+  active = i;
+  video.onloadedmetadata = () => {
+    const target = startTime(i) + time;
+    if (target > 0) video.currentTime = target;
+  };
   video.src = options[i][1];
   buttons.forEach((button, index) => button.setAttribute('aria-pressed', String(index === i)));
 }
