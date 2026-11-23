@@ -62,7 +62,7 @@ voices and play new cue IDs. One-shot cues use the acoustic mix at
 dispatch. The native listener is shared by voices on a context.
 Call `update(frame, {seek: true})` on a discontinuous seek and `dispose()`
 when the player is removed. The caller owns the context and can resume it
-from a user gesture. Cue assets stay under host control.
+from a user gesture. Cue assets stay under host control. Enable [directional sound captions](directional-captions.md#show-captions-in-the-live-player) to read captions on the audio clock.
 [Web Audio API](https://www.w3.org/TR/webaudio/)
 
 Add a [pinned binaural profile](pinned-binaural.md) to use a project-selected headphone response in preview and export. Add an [emitter radiation profile](directional-audio.md) to vary each band with the source orientation.

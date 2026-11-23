@@ -112,12 +112,12 @@ function createSceneAudio(definition, { kit = require('../index.js').load(), res
     const includeRoom=postSelected || selection?.kind!=='stem' || ['mix','spatial'].includes(selection.name);
     const binaural=binauralPlan&&{...binauralPlan,path:[]};
     const aggregation=mixer?.voiceBudget?.aggregation;
-    const earPath=binaural?.path??(aggregation?[]:undefined);
+    const earPath=binaural?.path??(aggregation||history&&mixer?[]:undefined);
     const crowd=aggregation&&createSceneCrowd(aggregation,sampleRate,earPath);
     const roomPath=includeRoom && mixer?.roomResponse ? [] : undefined;
     const roomResponse=roomPath && {...mixer.roomResponse,path:roomPath,
       convolution:K.procedural.mediaGraph.prepareImpulseResponse};
-    const playbackReceipts = history && createPlaybackReceipts({sampleRate,end,post});
+    const playbackReceipts = history && createPlaybackReceipts({sampleRate,start,end,post,earPath});
     let next = 0, score = [], automated = [], knots = 0, generated, produced, entry, worldReport;
     const productionIntents=[], worldEvents=[], productionSources=new Map();
     const cueLimit=musicSelected && captureWorld ?
@@ -158,6 +158,11 @@ function createSceneAudio(definition, { kit = require('../index.js').load(), res
         ...(voice.radiation&&{radiation:Radiation.shelf(voice.bands,voice.gain)}),
         ...(mixer?.voiceBudget&&{rankGain:Math.max(voice.gain,voice.contact?.targetGain??0)}),
         ...(voice.processing&&{processing:voice.processing}) };
+    }
+    function receiptPoint(knot,voice) {
+      knot.position = voice.position;
+      knot.apparentSource = voice.apparentSource ?? voice.position;
+      knot.opening = voice.acousticOpening ?? null;
     }
     function append(target, row) {
       if (++knots > 200000) throw new RangeError('Scene soundtrack exceeds its spatial automation budget');
@@ -249,7 +254,7 @@ function createSceneAudio(definition, { kit = require('../index.js').load(), res
         const lag=Math.round(tap.delay*sampleRate);
         return {lag,point:point({...tap,processing:voice.processing},ear,time+lag,true)};
       });
-      if (evidence) p.position=voice.position;
+      if (evidence) receiptPoint(p,voice);
       if (voice.attachment) {
         const audio = resolve(voice.asset);
         const duration = Math.max(0, (audio.samples.length/audio.channels/audio.sampleRate-voice.offset)/voice.rate);
@@ -335,7 +340,7 @@ function createSceneAudio(definition, { kit = require('../index.js').load(), res
         if (sample<=row.first) continue;
         const live = mixer.cue({query,listener,...attachment});
         const knot = point(live,ear,sample,true);
-        if (report) knot.position=live.position;
+        if (report) receiptPoint(knot,live);
         knot.pan ??= row.points.at(-1).pan;
         if (binaural) knot.hrirAt ??= row.points.at(-1).hrirAt;
         append(row.points,knot);

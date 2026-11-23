@@ -1533,6 +1533,7 @@ const CMD = {
         '    [--plan markers.json] [--out timeline.json]   export editable scene markers',
         '  '+require('./story-effects.js').usage,
         '  '+require('./story-audio.js').usage,
+        '  '+require('./directional-captions.js').usage,
         '  '+require('./story-audition.js').usage,
         '  '+require('./story-editorial.js').usage,
         '  '+require('./story-presentation.js').usage,
