@@ -1310,6 +1310,8 @@ const CMD = {
         '  render/clip --volume-scale 3 --volume-reconstruction object|depth|lighting   choose a coarse fog reconstruction',
         '  render/clip --volume-stochastic 4 --volume-stochastic-history 12   trial sparse scattering in one static fog field',
         '  render-suite [--scene gatehouse|signal-coil|night] [--profile file.json] [--out directory]   compare matched art-grid renders',
+        '  canvas-grid-check [<plan.json>] [--chrome executable] [--hardware] [--out directory] [--fail-on-flags]',
+        '    Check pixel widths and slow pans in the browser at several viewport sizes and device pixel ratios.',
         '  fog-reconstruction review <scene> --out directory [--subject object-id --volume-scale 4 --from 0 --to 2.4 --fps 10]',
         '  render/clip --dynamic-bounce off   reuse the baked probes without sampling moving sources',
         '  render <id> --palette-constraints <file.json|off>   override target palettes and dither settings',
@@ -3131,6 +3133,23 @@ const CMD = {
     for (const {id,groups,webgl} of report.views)
       console.log(id,webgl,'visible curve spans,',groups.shoots.attached,'attached clay shoots');
     console.log('wrote',directory);
+  },
+  async 'canvas-grid-check'() {
+    if (pos.length > 1 || opt.out === true || opt.chrome === true)
+      die('Use canvas-grid-check [<plan.json>] [--chrome executable] [--hardware] [--out directory] [--fail-on-flags]');
+    const directory = outputFile('canvas-grid-check'), planFile = pos[0] && path.resolve(pos[0]);
+    if (planFile === path.join(directory, 'report.json')) die('Choose an output directory separate from the canvas grid plan');
+    const report = await require('./canvas-grid-check.js').run(directory, {
+      ...(planFile && { plan: JSON.parse(fs.readFileSync(planFile, 'utf8')), root: path.dirname(planFile) }),
+      chrome: opt.chrome, hardware: opt.hardware,
+      onCase({ viewport, flags }) {
+        const kinds = [...new Set(flags.map(flag => flag.kind))];
+        console.log(viewport.width + '×' + viewport.height, 'at DPR', viewport.dpr,
+          kinds.length ? kinds.join(', ') : 'clean');
+      }
+    });
+    console.log('wrote', directory);
+    if (opt['fail-on-flags'] && report.cases.some(result => result.flags.length)) process.exitCode = 2;
   },
   'render-suite'() {
     if (pos.length) die('Use render-suite [--scene gatehouse|signal-coil|night] [--profile file.json] [--out directory]');
