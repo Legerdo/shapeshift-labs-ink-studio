@@ -180,7 +180,7 @@ pane that moves through bounded mist, world-space rain, and a reflective basin.
 
 ## Local bounce probes
 
-[Add local bounce probes](bounce-probes.md) for baked surface color transfer and directional sky fill that follows the active environment profile.
+[Add local bounce probes](bounce-probes.md) for diffuse surface color, moving colored sources, and directional sky fill.
 
 ## Shaped area lights
 

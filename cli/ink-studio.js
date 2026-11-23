@@ -772,7 +772,9 @@ function bounceProbesOption() {
   if (value === undefined) return undefined;
   if (value === 'off') return false;
   if (value === true || value === 'on') return true;
-  return bounceProbesOverride ??= JSON.parse(fs.readFileSync(path.resolve(value), 'utf8'));
+  const file = path.resolve(value);
+  shot?.dependency(file);
+  return bounceProbesOverride ??= JSON.parse(fs.readFileSync(file, 'utf8'));
 }
 
 const view = extra =>
@@ -884,6 +886,7 @@ const view = extra =>
       shadowShells: onOffOption('shadow-shells'),
       shotLighting: shotLightingOption(),
       bounceProbes: bounceProbesOption(),
+      dynamicBounce: onOffOption('dynamic-bounce'),
       relighting: relightingOption(),
       shadowArt: shadowArtOption(),
       contactShadows: contactShadowsOption(),
@@ -1163,6 +1166,8 @@ const CMD = {
         '  stats <id>                  splat counts, colours used, size, cost per frame, warnings',
         '  render <id> [--t 1.5]       one PNG rendered on the CPU',
         '  bounce-probes bake <scene> [--bounce-probes settings.json] --out probes.json',
+        '  bounce-probes review <scene> --out directory [--from 0 --to 3 --fps 12 --w 184 --h 112]',
+        '  render/clip --dynamic-bounce off   reuse the baked probes without sampling moving sources',
         '  render <id> --palette-constraints <file.json|off>   override target palettes and dither settings',
         '  render <id> --coverage-aware on|off   grade target contributions before compositing',
         '  render <id> --look-masks off   bypass masked look bindings',
@@ -1922,7 +1927,18 @@ const CMD = {
   },
   'bounce-probes'() {
     const [action,id] = pos;
-    if (action !== 'bake' || !id) die('bounce-probes bake <scene> [--bounce-probes settings.json] --out probes.json');
+    if (action === 'review' && id && pos.length === 2 && typeof opt.out === 'string') {
+      const directory = outputFile('bounce-probes-review');
+      const names = ['baked.png', 'live.png', 'review.json', 'index.html'];
+      const inputs = [id, opt['bounce-probes']].filter(value => typeof value === 'string').map(file => path.resolve(file));
+      if (names.some(name => inputs.includes(path.join(directory, name)))) die('Write the review separately from its inputs');
+      const report = require('./bounce-probes-review.js').review(buildPreview(id), directory, {
+        pose, view, width: num('w', 184), height: num('h', 112), from: num('from', 0), to: num('to', 3), fps: num('fps', 12)
+      });
+      console.log('Compared', report.samples.length, 'native frames. Wrote', directory);
+      return;
+    }
+    if (action !== 'bake' || !id) die('Use bounce-probes bake <scene> --out probes.json or bounce-probes review <scene> --out directory');
     const world=build(id), override=bounceProbesOption();
     const data=lib().KIT.bounceProbes.bake(world,override===true ? world.bounceProbes : override ?? world.bounceProbes);
     if (!data?.probes.length) die('Bounce probe baking needs at least one authored probe');
