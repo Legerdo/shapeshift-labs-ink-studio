@@ -357,6 +357,15 @@ function renderFrame(world, o, preparedPalettes) {
   const hasFocus = focusBands.some(band => band.radius > 0);
   const cw = o.w ?? o.width ?? 900, ch = o.h ?? o.height ?? 620;
   const camera = CameraLens.frame(world, o, cw, ch, { orbit: viewStaging?.orbit, impulse: CameraImpulses.frame, probe: !!o[probeCamera] });
+  if (world.anim?.bones) {
+    const {viewPoses}=require('../index.js').load().KIT;
+    if (viewPoses.forWorld(world)?.active) {
+      const view=o[probeCamera]?.matrix ?? camera.view;
+      const pose=o.reflectionPlane ? CameraLens.fromView(SceneOptics.reflectedView(view,o.reflectionPlane)) :
+        o[probeCamera] ? CameraLens.fromView(view) : camera.pose;
+      world=viewPoses.frame(world,{...pose,ortho:camera.ortho},{enabled:o.viewPoses!==false,headless:true});
+    }
+  }
   const { lens: { fov, sensorHeight }, tangent, ortho, dist, dist0, yaw, pitch, framed: T, base: c,
     setback: depthOffset, radius: R } = camera;
   const an = world.anim || {};

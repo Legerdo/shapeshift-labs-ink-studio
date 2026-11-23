@@ -464,6 +464,8 @@ Use [pose blocking and the pose shelf](docs/pose-blocking.md) to hold named stor
 
 Use [pose-space corrective sculpts](docs/pose-correctives.md) to repair a posed silhouette with editable brush strokes. Named joint rotations blend the correction in live WebGL, headless rendering, and sprite atlases.
 
+Use [view-specific pose corrections](docs/view-poses.md) to reshape the silhouette of a held pose in a camera sector. Elbow and prop edits blend over the orbit while preserving foot plants and grip contacts.
+
 Use [Motion Review](docs/motion-review.md) to inspect loop pops, spacing spikes, arc kinks, and foot drift on solved puppet motion. Audition one beat at a time and apply, mute, or remove corrective layers.
 
 Use [clip sequencing](docs/clip-sequence.md) to trim and retime instances, inspect handoffs, and audition Once, Loop, or Travel loop playback. Keys and cues follow their clip instances through timing changes.

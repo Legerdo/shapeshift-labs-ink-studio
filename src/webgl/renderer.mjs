@@ -836,6 +836,9 @@ function createBackend(gl, toolkit, { specialize, reuseOrder, simpleOnly }) {
       const viewHistories = historiesAt(plane === zero ? 0 : frame[portalDepth] ?? 1);
       const histories = viewHistories.transparency;
       const camera = cameraOverride ?? makeCamera(world, frame, width, height);
+      const viewPoses = toolkit.KIT?.viewPoses;
+      if (viewPoses?.forWorld(world)?.active)
+        world = viewPoses.frame(world, { ...cameraPose(camera), ortho:camera.ortho }, {enabled:frame.viewPoses!==false});
       if (world.shadowLod && frame.shadowArt !== false)
         world = toolkit.KIT?.shadowArt?.frame(world, camera.shadowFootprint) ?? world;
       const harmonics = world.gaussianHarmonics;
@@ -1038,7 +1041,8 @@ function createBackend(gl, toolkit, { specialize, reuseOrder, simpleOnly }) {
       }
       let geometry = waterScene ? (layeredGlass ? wetGlassGeometry : wetGeometry) :
         (layeredGlass ? dryGlassGeometry : dryGeometry), contours = waterScene ? wetContours : dryContours;
-      const isNew = world !== lastWorld || world.data !== lastData || world.count !== lastCount || group !== lastInstances;
+      const worldIdentity = viewPoses?.source(world) ?? world;
+      const isNew = worldIdentity !== lastWorld || world.data !== lastData || world.count !== lastCount || group !== lastInstances;
       const materialStyles = !!(world.materialPixelStyles || group && instancePlan(group).hasMaterialPixelStyles);
       const coverageSetting = frame.splatCoverage ?? look.splatCoverage ?? 'legacy';
       const splatCoverage = coverageRules?.coverageMode?.(coverageSetting) ?? ['legacy', 'continuous', 'soft'].indexOf(coverageSetting);
@@ -1828,7 +1832,7 @@ function createBackend(gl, toolkit, { specialize, reuseOrder, simpleOnly }) {
         }
       } else drawCels(output);
       gl.activeTexture(gl.TEXTURE0);
-      lastWorld = world;
+      lastWorld = worldIdentity;
       lastInstances = group;
       lastData = world.data;
       lastStaged = Boolean(portableStages);
@@ -2157,6 +2161,12 @@ export function createRenderer(canvas, { toolkit, specialize = true, reuseOrder 
       validateWorld(world,frame);
       const create = toolkit.KIT?.procedural?.contributions?.create;
       if (!create) throw new Error('Contribution picking needs the Ink Studio KIT');
+      const viewPoses = toolkit.KIT?.viewPoses;
+      if (frame.viewPoses!==false && viewPoses?.forWorld(world)?.active) {
+        const camera = makeCamera(world,frame,frame.width ?? frame.target?.width ?? canvas.width,
+          frame.height ?? frame.target?.height ?? canvas.height);
+        world = viewPoses.frame(world,{...cameraPose(camera),ortho:camera.ortho});
+      }
       const group = frame.instances, revision = group && instancePlan(group).revision;
       const time = frame.time ?? frame.t ?? world.lookSnapshot?.time ?? 0;
       const withdrawal = frame.sampleWithdrawal ?? world.sampleWithdrawal ?? 0;

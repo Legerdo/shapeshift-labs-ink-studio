@@ -271,6 +271,16 @@ function build(id, seedOverride, { paint = true, retainSdf = false, retainRefere
       editor.set(Array.isArray(asset) ? asset : [asset]);
     }
   }
+  if (opt['view-poses']!==undefined) {
+    const editor=lib().KIT.viewPoses.forWorld(w), source=opt['view-poses'];
+    if (source==='off') editor?.set(null);
+    else {
+      if (typeof source!=='string' || !editor) die('--view-poses needs an asset JSON file and a puppet rig');
+      const file=path.resolve(source);
+      shot?.dependency(file);
+      editor.set(JSON.parse(fs.readFileSync(file,'utf8')));
+    }
+  }
   if (s.lookPreviewPacks !== undefined) w.lookPreviewPacks = s.lookPreviewPacks;
   w.name = s.name;
   w.clock = 0;
@@ -1211,6 +1221,7 @@ const CMD = {
         '  pose-correctives capture <scene> --plan sculpt.json --t 1 --out correction.json',
         '  pose-correctives review <scene> --out directory [--from 0 --to 2.4 --fps 10]',
         '  render/clip/atlas --pose-correctives patch.json|off   load or bypass puppet corrective sculpts',
+        '  render/clip/atlas --view-poses asset.json|off   load or bypass view-sector pose corrections',
         '  render/clip --volume-scale 3 --volume-reconstruction object|depth   choose a coarse fog reconstruction',
         '  fog-reconstruction review <scene> --out directory [--subject object-id --volume-scale 4 --from 0 --to 2.4 --fps 10]',
         '  render/clip --dynamic-bounce off   reuse the baked probes without sampling moving sources',

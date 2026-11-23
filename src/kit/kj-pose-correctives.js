@@ -151,16 +151,12 @@
       return editor;
     }
 
-    function writeBone(i,A,t) {
-      buffer.set(A,i*12);
-      buffer.set(t,i*12+9);
+    function writeBone(output,i,A,t) {
+      output.set(A,i*12);
+      output.set(t,i*12+9);
     }
-    function frame(bones) {
-      base=bones;
-      if (!buffer) { weights=[]; return bones; }
-      const snapshots=new Map(driverNames.map(part=>[part,driver(puppet.parts[part])]));
-      weights=layers.map(layer=>weight(layer.joints,snapshots));
-      buffer.set(bones);
+    function apply(bones,output) {
+      output.set(bones);
       for (const row of rows.values()) {
         const [x,y,z,bone,secondary,blend]=row.rest, p=[x,y,z];
         const {A,t}=column(bones,bone), b=blend&&column(bones,secondary);
@@ -174,8 +170,8 @@
           for (let c=0;c<9;c++) change[c]+=w*edit.gradient[c];
         }
         if (!total || !invertible(A)) {
-          writeBone(row.first,A,t);
-          if (blend) writeBone(row.second,b.A,b.t);
+          writeBone(output,row.first,A,t);
+          if (blend) writeBone(output,row.second,b.A,b.t);
           continue;
         }
         const gain=1/Math.max(1,total);
@@ -183,13 +179,23 @@
         let J=identity.map((n,i)=>n+gain*change[i]);
         if (M.det(J)<=1e-4) J=identity;
         const first=M.mul(A,J), shift=M.app(A,move);
-        writeBone(row.first,first,V.sub(V.add(V.add(t,shift),M.app(A,p)),M.app(first,p)));
+        writeBone(output,row.first,first,V.sub(V.add(V.add(t,shift),M.app(A,p)),M.app(first,p)));
         if (blend) {
           const second=M.mul(M.mul(first,M.inv(A)),b.A);
-          writeBone(row.second,second,V.sub(V.add(V.add(b.t,shift),M.app(b.A,p)),M.app(second,p)));
+          writeBone(output,row.second,second,V.sub(V.add(V.add(b.t,shift),M.app(b.A,p)),M.app(second,p)));
         }
       }
-      return buffer;
+      return output;
+    }
+    function frame(bones) {
+      base=bones;
+      if (!buffer) { weights=[]; return bones; }
+      const snapshots=new Map(driverNames.map(part=>[part,driver(puppet.parts[part])]));
+      weights=layers.map(layer=>weight(layer.joints,snapshots));
+      return apply(bones,buffer);
+    }
+    function viewFrame(bones) {
+      return buffer ? apply(bones,new Float32Array(buffer.length)) : bones;
     }
     function refresh(bones) {
       puppet.anim.bones=frame(bones);
@@ -203,7 +209,7 @@
       state:()=>layers.map(({id,rows},i)=>({id,rows:rows.length,weight:weights[i]??0}))
     });
     rigs.set(world,editor);
-    return {editor,frame,refresh};
+    return {editor,frame,refresh,viewFrame};
   }
 
   K.poseCorrectives=Object.freeze({ bind, forWorld:world=>rigs.get(world) });
