@@ -1554,6 +1554,7 @@ const CMD = {
         '  take map <clock-map.json> [--format report|timeline] [--out file.json]   map events and dialogue words through an exact editorial cut',
         '  take render-av <recipe.json> --out directory   publish synchronized picture controls, PNGs and WAV',
         '  take mouth-cels <recipe.json> --out directory   align a voice read and review native-grid mouth holds',
+        '  take audition-handoff <recipe.json> --out directory   audition sound leads and delays against fixed picture',
         '  take check-sync <recipe.json> [--out report.json] [--fail-on-flags]   compare visible contact and rendered attack',
         '  timeline <scene> [--at seconds] [--from seconds --to seconds] [--out report.json]  sample tracks and export cues',
         '  authored-contacts <id> [--at seconds] [--out report.json]  inspect contact ranges and socket transfer timing',

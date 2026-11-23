@@ -129,6 +129,8 @@ function command(pos, opt, settings) {
     return require('./take-clock-map.js').command(pos[1],opt,settings);
   if(pos[0]==='mouth-cels'&&pos.length===2)
     return require('./mouth-cels.js').command(pos[1],opt,settings);
+  if(pos[0]==='audition-handoff'&&pos.length===2)
+    return require('./attention-handoff.js').command(pos[1],opt,settings);
   if(pos[0]==='check-sync'&&pos.length===2)
     return require('./delivered-sync.js').command(pos[1],opt,settings);
   if(pos[0]==='render-av'&&pos.length===2)

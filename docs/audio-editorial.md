@@ -20,6 +20,9 @@ Both project files reference the original WAVs by relative path.
 Use [Foley spotting](foley-perspective.md) to derive a session with paired
 close and distant takes from committed world events.
 
+Use the [attention handoff audition](attention-handoff.md) to compare a few
+timings for the same clip against one fixed picture excerpt.
+
 ## Session
 
 A CLI recipe contains a `session` object and an `assets` table mapping
