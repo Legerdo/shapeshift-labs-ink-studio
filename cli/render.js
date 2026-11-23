@@ -176,7 +176,9 @@ function render(world, o, preparedPalettes) {
   if (o[deepScope] === undefined && (o.deepComposite ?? world.look?.deepComposite) !== undefined) {
     o[deepScope] = DeepComposite.settings(o.deepComposite ?? world.look?.deepComposite);
   }
-  if (o[matteScope] && o[deepScope] == null && !o.reflectionPlane) o[deepScope] = DeepComposite.settings({layers:1});
+  // Projected diagnostics use the shot's normal fragment ordering for a replayable camera review.
+  if (o[matteScope] && !o[matteScope].projected && o[deepScope] == null && !o.reflectionPlane)
+    o[deepScope] = DeepComposite.settings({layers:1});
   if (o?.cameraGuides && !o.samples && !o.captureCoverage) {
     const staging = o.cameraStaging ?? world.look?.cameraStaging;
     return CameraStaging.overlay(render(world, { ...o, cameraGuides: false, cameraStaging: staging || true }, preparedPalettes));
@@ -1677,7 +1679,10 @@ function renderFrame(world, o, preparedPalettes) {
   const foregroundDepth = z => z - (eyeD-dist);
   function composite(p, i, z, dn, a, pr, pg, pb, wd, emits, highlight, paletteId, detailParticle, projected, coat, glass, mark,
     opticalDepth = z, sprite, haze = 0, rule, reflected, filteredEdge = false, refraction = 1, sectionEdge = false, claim, baseColor, surfaceMatte, emissionTint, strandHit) {
-    if (surfaceDepth && (!sprite?.surface || sdf) && opticalDepth > surfaceDepth[p]+1e-5) return;
+    if (surfaceDepth && (!sprite?.surface || sdf) && opticalDepth > surfaceDepth[p]+1e-5) {
+      if (mattes?.projectHidden) mattes.projectHidden(p, i, sprite, a);
+      return;
+    }
     if (focus?.rain || fallingCoverage) {
       const kind = i < 0 ? 0 : Math.round(d[i*16+11])%16;
       if (kind === 2 && focus.rain) {

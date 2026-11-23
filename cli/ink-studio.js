@@ -629,6 +629,14 @@ function stableDetailOption() {
 let stagingOverride;
 function cameraOptions() {
   const cameraShot = opt['camera-shot'];
+  const cameraOffset = opt['camera-orbit-offset'];
+  let cameraOrbitOffset;
+  if (cameraOffset !== undefined) {
+    const degrees = list('camera-orbit-offset');
+    if (typeof cameraOffset !== 'string' || cameraOffset.split(',').some(part => !part.trim()) ||
+        degrees.length !== 2 || !degrees.every(Number.isFinite)) die('--camera-orbit-offset needs yaw,pitch in degrees');
+    cameraOrbitOffset = degrees.map(n => n * Math.PI / 180);
+  }
   if (cameraShot !== undefined && !lib().KIT.world.data.id(cameraShot)) die('--camera-shot needs a shot ID');
   const staging = opt['camera-staging'];
   if (staging !== undefined && typeof staging !== 'string') die('--camera-staging needs a JSON file, on or off');
@@ -637,7 +645,7 @@ function cameraOptions() {
   if (opt['focal-length'] === true || opt['sensor-height'] === true) die('Lens options need a value in millimeters');
   const composition=opt.composition===undefined?undefined:String(opt.composition).split(',').map(Number);
   if(composition!==undefined) {try{lib().CameraLens.composition(composition);}catch(error){die('--composition needs two normalized numbers, e.g. 0.33,0.5');}}
-  return { cameraImpulseTime:num('camera-impulse-time'), fov:num('fov'), focusDistance:num('focus-distance'), composition, cameraShot, ortho: onOffOption('ortho'), cameraStaging, cameraGuides: onOffOption('camera-guides'),
+  return { cameraImpulseTime:num('camera-impulse-time'), fov:num('fov'), focusDistance:num('focus-distance'), composition, cameraShot, cameraOrbitOffset, ortho: onOffOption('ortho'), cameraStaging, cameraGuides: onOffOption('camera-guides'),
     focalLength: num('focal-length'), sensorHeight: num('sensor-height'), depthOfField: onOffOption('depth-of-field') };
 }
 
@@ -1164,6 +1172,7 @@ const CMD = {
         '  shot grade-match <plan.json> [--out directory]   match chroma from shared objects',
         '  shot reframe <plan.json> [--out directory]       track safe crops across delivery formats',
         '  shot match-cut <plan.json> [--out directory]      rank and play shape matches across shot handles',
+        '  shot silhouette-repair <plan.json> [--out dir]   find merged characters and test small camera offsets',
         '  shot light-paint <scene> --shot-lighting rig.json --out targets.html [--t seconds] [--w W --h H]',
         '  shot light-fit <scene> --shot-lighting rig.json --targets targets.json --out folder [--evaluations N] [--interactive]',
         '  render <scene.json> --asset-pack <pack-or-bundle.json> [--environment-preset pack/preset]   install and select a reusable look',
@@ -1173,6 +1182,7 @@ const CMD = {
         '  turn <id> [--n 8] [--t 0]   the diorama from all round, on one sheet',
         '  clip <id> [--from 0 --to 6 --fps 12]   animated PNG (also --text, --feedback-fps 24, --feedback-cuts 2.5,4)',
         '    --camera-pan x,y,z --camera-orbit degrees --px 1   review slow camera motion at native art resolution',
+        '    --camera-orbit-offset yaw,pitch                  offset the authored orbit in degrees',
         '  reel <manifest.json> [--out reel.html] [--clean]   export selected captures as an offline reel',
         '  ghost <id> [--t 2 --spacing 0.12 --n 2 | --ghosts 1.6,1.8]   one moment with those either side laid faintly over it',
         '  acts                        the ready clips, reactions, easings and cues, by name',
@@ -2194,6 +2204,19 @@ const CMD = {
     console.log(warn.length ? 'warnings:\n  ' + warn.join('\n  ') : 'no warnings');
   },
   shot() {
+    if (pos[0] === 'silhouette-repair') {
+      if (pos.length !== 2 || Object.keys(opt).some(key => key !== 'out') || opt.out === true)
+        die('Use shot silhouette-repair <plan.json> [--out directory]');
+      const directory = outputFile('silhouette-repair');
+      const report = require('./silhouette-repair-command.js').run(pos[1], directory, { build, pose, view });
+      console.log('Found', report.intervals.length, 'collision intervals.');
+      if (report.repair) console.log('Verified camera orbit offset (yaw,pitch degrees):', report.repair.offsetDegrees.join(','));
+      else if (report.status === 'unsupported-camera') console.log('The repair requires an orbit-authored camera.');
+      else if (report.intervals.length) console.log('No verified repair within the camera offset budget.');
+      else if (report.status === 'unverified') console.log('Some frames could not be verified.');
+      console.log('Wrote', directory);
+      return;
+    }
     if (pos[0] === 'match-cut') {
       if (pos.length !== 2 || Object.keys(opt).some(key => key !== 'out') || opt.out === true)
         die('Use shot match-cut <plan.json> [--out directory]');
