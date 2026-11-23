@@ -1,7 +1,7 @@
 /* Allocate spatial voices at arrivals, departures, and recorded gain changes. */
-const {select}=require('../src/world-voice-budget.js');
+const {select,selectWithTextures}=require('../src/world-voice-budget.js');
 
-function planWorldVoices(voices,resolve,{end,sampleRate,policy}){
+function planWorldVoices(voices,resolve,{end,sampleRate,policy,crowd}){
   const changes=[], fade=Math.round(policy.stealFade*sampleRate);
   for(const track of voices){
     const {budget,first,points}=track;
@@ -13,7 +13,8 @@ function planWorldVoices(voices,resolve,{end,sampleRate,policy}){
       (track.offset??0))/(track.rate??1)*sampleRate));
     const stop=Math.min(end,track.end??end,track.loop?end:first+natural);
     if(stop<=first)continue;
-    const row={...budget,track,first,stop,gain:points?.[0]?.rankGain??points?.[0]?.gain??1};
+    const row={...budget,track,first,stop,...(crowd&&{source,position:track.aggregationAt,bus:track.bus,queueDelay:track.aggregationDelay}),
+      gain:points?.[0]?.rankGain??points?.[0]?.gain??1};
     changes.push({sample:first,add:row},{sample:stop,remove:row});
     let prior=row.gain;
     for(const point of points??[]){
@@ -26,17 +27,17 @@ function planWorldVoices(voices,resolve,{end,sampleRate,policy}){
   }
   changes.sort((a,b)=>a.sample-b.sample);
   const live=new Map(), counters={admitted:0,dropped:0,stolen:0,virtual:0,resumed:0,peakVoices:0};
-  let kept=new Map(), retiring=[], omitted=0;
+  let kept=new Map(), retiring=[], omitted=0, peakDirectVoices=0, peakTextureVoices=0;
   const decisions=[];
-  function note(row,sample,action,reason){
-    counters[action]++;
+  function note(row,sample,action,reason,sector){
+    counters[action]=(counters[action]??0)+1;
     const {audit}=row.track;
     if(audit){
-      if(!audit.voiceBudget)audit.voiceBudget={action,sample,...(reason&&{reason})};
+      if(!audit.voiceBudget)audit.voiceBudget={action,sample,...(reason&&{reason}),...(sector!==undefined&&{sector})};
       else if(action==='stolen')audit.voiceBudget.stolenAt=sample;
     }
     const item={sample,action,id:row.id,cue:row.cue,priority:row.priority,protected:row.protected,
-      ...(row.group!==undefined&&{group:row.group}),...(reason&&{reason}),
+      ...(row.group!==undefined&&{group:row.group}),...(sector!==undefined&&{sector}),...(reason&&{reason}),
       ...(audit?.source?.beatId&&{beatId:audit.source.beatId})};
     if(decisions.length<1024)decisions.push(item);
     else omitted++;
@@ -51,9 +52,13 @@ function planWorldVoices(voices,resolve,{end,sampleRate,policy}){
     }
     const candidates=[...live.values()].filter(row=>row.gain>0);
     for(const row of candidates)row.incumbent=kept.has(row.id);
-    const {selected,rejected}=select(candidates,policy);
+    const ranked=crowd?selectWithTextures(candidates,policy,crowd.active(sample)):select(candidates,policy);
+    const {selected,rejected,seats=0,overflow}=ranked;
+    if(crowd&&!seats)crowd.cut(sample);
     const next=new Map([...selected].map(id=>[id,live.get(id)]));
-    counters.peakVoices=Math.max(counters.peakVoices,next.size);
+    counters.peakVoices=Math.max(counters.peakVoices,next.size+seats);
+    peakDirectVoices=Math.max(peakDirectVoices,next.size);
+    peakTextureVoices=Math.max(peakTextureVoices,seats);
     retiring=retiring.filter(span=>span.end>sample);
     for(const [id,row] of kept){
       if(next.has(id)||row.stop<=sample)continue;
@@ -81,7 +86,9 @@ function planWorldVoices(voices,resolve,{end,sampleRate,policy}){
       const row=live.get(id);
       if(!row)continue;
       if(row.mode==='cue'){
-        note(row,sample,'dropped',reason);
+        const member=overflow?.has(id)&&crowd.add(row.track,row.source,sample,row.stop,seats);
+        if(member)note(row,sample,'aggregated',reason,member.sector);
+        else note(row,sample,'dropped',reason);
         live.delete(id);
       }else if(!row.virtual){
         row.virtual=true;
@@ -90,7 +97,8 @@ function planWorldVoices(voices,resolve,{end,sampleRate,policy}){
     }
     kept=next;
   }
-  return {...policy,...counters,decisions,omitted};
+  return {...policy,...counters,decisions,omitted,...(crowd&&{peakDirectVoices,peakTextureVoices,
+    aggregationStreams:crowd.streams(),aggregated:crowd.count()})};
 }
 
 module.exports={planWorldVoices};

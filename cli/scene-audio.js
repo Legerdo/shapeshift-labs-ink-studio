@@ -9,6 +9,7 @@ const WAV = require('./wav.js');
 const { readAudioSource, isSoundRecipe, decodeSoundRecipe } = require('./sound-source.js');
 const { mix } = require('./scene-audio-mix.js');
 const { planWorldVoices } = require('./scene-voice-budget.js');
+const { createSceneCrowd } = require('./scene-crowd-audio.js');
 const { createPlaybackReceipts } = require('./scene-audio-receipts.js');
 const { createScenePost, buses, legacy } = require('./scene-audio-post.js');
 const { readEditorialProject } = require('./music-editorial.js');
@@ -109,6 +110,9 @@ function createSceneAudio(definition, { kit = require('../index.js').load(), res
     const history = trace && { sections: [], cues: [], layers: [] };
     const includeRoom=postSelected || selection?.kind!=='stem' || ['mix','spatial'].includes(selection.name);
     const binaural=binauralPlan&&{...binauralPlan,path:[]};
+    const aggregation=mixer?.voiceBudget?.aggregation;
+    const earPath=binaural?.path??(aggregation?[]:undefined);
+    const crowd=aggregation&&createSceneCrowd(aggregation,sampleRate,earPath);
     const roomPath=includeRoom && mixer?.roomResponse ? [] : undefined;
     const roomResponse=roomPath && {...mixer.roomResponse,path:roomPath,
       convolution:K.procedural.mediaGraph.prepareImpulseResponse};
@@ -222,7 +226,8 @@ function createSceneAudio(definition, { kit = require('../index.js').load(), res
         return;
       }
       const row={stem,bus:voice.bus,asset:voice.stickSlip?pulseAsset(voice.stickSlip):voice.asset,
-        cue:voice.cue,first:time,offset:voice.offset,rate:voice.rate};
+        cue:voice.cue,first:time,offset:voice.offset,rate:voice.rate,
+        ...(crowd&&{aggregationAt:voice.apparentSource??voice.position,aggregationDelay:voice.delay+(voice.startDelay??0)})};
       if (voice.stickSlip) {
         row.stickSlip={...voice.stickSlip,onsetSample:sample};
         row.end=time+Math.ceil(resolve(row.asset).samples.length/row.rate);
@@ -363,11 +368,11 @@ function createSceneAudio(definition, { kit = require('../index.js').load(), res
       const target = audition && events.find(event=>event.id===audition.event && beat(event)?.beatId===audition.beatId);
       const state = mixer?.frame({query,listener,time,events,captureSources:trace,playback,receipts,
         ...(target && {audition})});
-      if (binaural && sample<end) {
-        const ear=state.listener, prior=binaural.path.at(-1);
+      if (earPath && sample<end) {
+        const ear=state.listener, prior=earPath.at(-1);
         const same=ear===prior?.ear||ear&&prior?.ear&&['position','forward','up'].every(key=>
           ear[key].every((n,i)=>n===prior.ear[key][i]));
-        if (!prior || !same) append(binaural.path,{sample,ear});
+        if (!prior || !same) append(earPath,{sample,ear:ear&&{...ear,right:K.V.norm(K.V.cross(ear.forward,ear.up))}});
       }
       if (roomPath && sample<end) {
         const {room,doorway,sends}=state.roomResponse;
@@ -518,7 +523,15 @@ function createSceneAudio(definition, { kit = require('../index.js').load(), res
         }
       }
     }
-    const allocation=mixer?.voiceBudget&&planWorldVoices(voices,resolve,{end,sampleRate,policy:mixer.voiceBudget});
+    const allocation=mixer?.voiceBudget&&planWorldVoices(voices,resolve,{end,sampleRate,policy:mixer.voiceBudget,crowd});
+    if (crowd&&(selection?.kind!=='world'||selection.name==='procedural/voice-aggregation')){
+      const texture=crowd.tracks(audio=>{
+        const id=Symbol('voice aggregation');
+        resolved.set(id,audio);
+        return id;
+      });
+      voices.push(...texture);
+    }
     const active=voices.filter(row => row.first < end && (postSelected || !selection ||
       (selection.kind==='stem' ? selection.name==='mix' || row.stem===selection.name :
         row.stem==='spatial' && row[selection.by]===selection.name)));

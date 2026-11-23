@@ -511,8 +511,10 @@ feedback with `protected: true`.
 reserved slots. Each group cap applies to all members of that group.
 A displaced voice has a short release, controlled by `stealFade` in
 seconds. Release tails use a separately bounded pool during the overlap.
-A dropped one-shot is skipped. A displaced loop can resume at the
-playhead it would have reached while silent.
+A dropped one-shot is skipped by default. Enable [crowd and debris sound
+aggregation](crowd-audio-aggregation.md) to fold eligible overflow into
+directional streams inside the same budget. A displaced loop can resume
+at the playhead it would have reached while silent.
 
 A Web Audio host can set `maxVoices` on the player to impose a smaller
 device cap. The live player decides when it receives a mix frame,
