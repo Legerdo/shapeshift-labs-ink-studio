@@ -1212,6 +1212,7 @@ const CMD = {
         '    sim live <world|checkpoint|run> --ticks N [--queries queries.json --policy access.json --record run.json]',
         '    sim view <world|checkpoint|run> --policy access.json --view ID [--ticks N --out view.json]   export a scoped frame',
         '    sim fork-compare <world|checkpoint|run> <plan.json> --out directory   capture and compare two verified story branches',
+        '    sim search-staging <world|checkpoint|run> <plan.json> --out directory   find and save shortest staging replays',
         '    sim seed-matrix <world> <plan.json> [--out report.json]   compare story outcomes, waiting, blockers, and casts across seeds',
         '    sim run|resume <world|checkpoint|run> [--start-story document/story] [--until-stage document/story/stage]',
         '      [--until-outcome document/story/outcome] [--until-condition condition.json] [--ticks N]   stop at a story breakpoint',
