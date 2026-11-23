@@ -17,9 +17,9 @@
   .eyebrow{color:var(--amber);text-transform:uppercase;letter-spacing:.13em}
   .workspace{display:grid;grid-template-columns:1.55fr 1fr;gap:12px}
   .viewer,.inspector,.exposures{background:var(--panel);border:1px solid var(--line);border-radius:11px;overflow:hidden}
-  .stage{height:clamp(200px,47vh,420px);display:grid;place-items:center;background:#111e25;position:relative}
+  .stage{height:clamp(200px,47vh,420px);display:grid;place-items:center;background:#111e25;position:relative;overflow:hidden}
   canvas{image-rendering:pixelated;display:block}
-  .stage canvas{width:100%;height:100%;object-fit:contain}
+  .stage canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none}
   .transport{display:flex;align-items:center;gap:9px;padding:9px;border-top:1px solid var(--line)}
   .transport input{width:100%;min-width:0;accent-color:var(--amber)}
   button,select{font:inherit;border:1px solid var(--line);border-radius:6px;color:var(--text);background:#202f36;padding:5px 8px}
