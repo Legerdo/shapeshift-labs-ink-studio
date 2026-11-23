@@ -68,6 +68,10 @@ ink-studio music mix render session.json --out take
   parallel path. A non-master strip with no explicit output routes to the
   master. Routing and sidechain dependencies must form an acyclic graph.
 
+A [shared focus track](shared-focus-track.md) can add a beat-driven gain
+offset after inserts on selected strips. It uses the same authored focus
+cues as the native picture renderer.
+
 ## Automation
 
 Replace a static control with a lane. Use `unit` of `beats`, `seconds`, or

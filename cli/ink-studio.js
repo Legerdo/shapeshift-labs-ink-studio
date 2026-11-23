@@ -600,6 +600,15 @@ function silhouetteOption() {
   return silhouetteOverride ??= JSON.parse(fs.readFileSync(path.resolve(value),'utf8'));
 }
 
+let focusTrackOverride;
+function focusTrackOption() {
+  const value = opt['focus-track'];
+  if (value === undefined) return;
+  if (value === 'off') return false;
+  if (typeof value !== 'string') die('--focus-track expects a JSON file or off');
+  return focusTrackOverride ??= JSON.parse(fs.readFileSync(path.resolve(value),'utf8'));
+}
+
 function artDirectionOption() {
   const value = opt['art-direction'];
   if (value === undefined) return;
@@ -878,6 +887,7 @@ const view = extra =>
       boundaryCels: onOffOption('boundary-cels') === false ? false : undefined,
       artDirection: artDirectionOption(),
       silhouetteProtection: silhouetteOption(),
+      focusTrack: focusTrackOption(),
       horizonBands: horizonOption(),
       effectPalettes: effectPalettesOption(),
       artEffects: opt.effects === 'off' ? false : opt.effects,
@@ -1375,7 +1385,7 @@ const CMD = {
         '  music production sound-library   list the recorded native sound packs',
         '  music production sound-pack ID --out DIR   export patches, WAVs, provenance and a mix rack',
         '  music production groove <recipe.json> [mapping.json]   transfer performance timing, accents and gates',
-        '  music mix render recipe.json --out directory   render routed audio, inserts, automation and taps',
+        '  music mix render recipe.json [--focus-track file.json|off] --out directory   render routed audio, inserts, automation and taps',
         '  music mix audition recipe.json --strip ID --insert ID --out directory   print a matched insert comparison and difference',
         '  music mix meter input.wav [--out report.json]   measure loudness, true peak and mono compatibility',
         '  music mix monitor input.wav --mode mono|small-speaker|stereo --out directory   audition the mix',
@@ -1617,6 +1627,7 @@ const CMD = {
         'shoreline options: --shore-foam on|off',
         'lighting options: --highlight-cels on|off --cutout-shadows on|off --shadow-shells on|off --volume-local-lights on|off --volume-local-shadows on|off',
         'silhouette protection: --silhouette-protection on|off|file.json',
+        'shared focus track: --focus-track file.json|off',
         'layered horizon: --horizon-bands on|off|file.json',
         'staging: --fov radians | --focal-length mm [--sensor-height mm] --focus-distance units --composition u,v --camera-staging on|off|file.json --camera-guides [on|off] --depth-of-field [on|off]',
         'art direction: --art-direction on|off|painted-pixel|storm-silhouette|soft-dawn|file.json',
