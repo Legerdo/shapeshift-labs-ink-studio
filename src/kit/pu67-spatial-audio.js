@@ -56,7 +56,7 @@
 
   function create(definition={}){
     const config=copy(definition);
-    check(keys(config,['cues','emitters','bindings','materials','surface','distance','occlusion','propagationDelay','soundFamilies','soundSeed','contactLoops','processing','soundReferenceDb','voiceBudget','earlyReflections']),
+    check(keys(config,['cues','emitters','bindings','materials','surface','distance','occlusion','propagationDelay','soundFamilies','soundSeed','contactLoops','processing','soundReferenceDb','voiceBudget','earlyReflections','roomResponse']),
       'Invalid spatial audio settings');
     const distance=distanceSettings(config.distance), cueList=table(config.cues??{},512,'cues',cueName);
     const {propagationDelay=false,surface,soundReferenceDb=70}=config;
@@ -65,6 +65,8 @@
     const voiceBudget=config.voiceBudget===undefined?undefined:WorldVoiceBudget.compile(config.voiceBudget);
     const reflections=config.earlyReflections===undefined||config.earlyReflections===false?null:
       W.earlyReflections.compile(config.earlyReflections);
+    const roomResponse=config.roomResponse===undefined||config.roomResponse===false?undefined:
+      W.roomResponse.compile(config.roomResponse);
     check(typeof propagationDelay==='boolean'&&(surface===undefined||field(surface)),'Invalid audio surface or delay setting');
     const {acoustic,rays=[],segments=[],lossDb,cutoff,materials:occluders={}}=config.occlusion??{};
     check(keys(config.occlusion??{},['acoustic','rays','segments','lossDb','cutoff','materials'])&&
@@ -382,13 +384,14 @@
       }
       const contactChanges=sustained?.changes.map(change=>({...change,voice:mix(query,ear,change.voice)}));
       return freeze(copy({time,listener:ear&&{position:ear.position,forward:ear.forward,up:ear.up},active,cues:shots,
-        ...(voiceBudget&&{voiceBudget}),...(contactChanges?.length&&{contactChanges})}));
+        ...(voiceBudget&&{voiceBudget}),...(contactChanges?.length&&{contactChanges}),
+        ...(roomResponse&&{roomResponse:{...roomResponse.definition,...roomResponse.sample(ear?.position)}})}));
     }
     function cue({ query, listener, cue, at, gain, pitch, exclude, object, audioProfile, routingCue, audition, captureSource } = {}) {
       return mix(query, listenerFrame(query, listener),
         { cue, at, gain, pitch, exclude, object, audioProfile, routingCue, audition, captureSource, mode: 'cue' });
     }
-    return Object.freeze({frame,cue,createPlayback,voiceBudget});
+    return Object.freeze({frame,cue,createPlayback,voiceBudget,...(roomResponse&&{roomResponse:roomResponse.definition})});
   }
   W.spatialAudio=Object.freeze({create});
 })(KIT);

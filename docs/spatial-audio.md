@@ -27,7 +27,7 @@ For offline soundtrack rendering, set `follow: true` on a cue to keep its
 one-shot tail attached to its entity or socket. Set `bus` to route the cue
 to a named post stem such as `foley`. [Adaptive story audio](adaptive-story-audio.md)
 
-Use [geometry-driven early reflections](early-reflections.md) to add the first few bounces from nearby surfaces to one-shot cues.
+Use [geometry-driven early reflections](early-reflections.md) to add the first few bounces from nearby surfaces to one-shot cues. Use [room response probes](room-response.md) to blend measured or baked impulse responses across listener positions and doorways.
 
 ## Build and play a frame
 

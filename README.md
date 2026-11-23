@@ -389,6 +389,8 @@ Bind audio cues to scene emitters, material contacts, and simulation events with
 
 Trace the first audible bounces off room geometry and finite panels in live and recorded mixes. [Geometry-driven early reflections](docs/early-reflections.md)
 
+Blend recorded or baked room impulse responses as the listener moves, with tails that carry across doorways. [Position-dependent room responses](docs/room-response.md)
+
 <!-- include: examples/puppet.js -->
 
 ```js

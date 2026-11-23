@@ -1,4 +1,5 @@
 /* Play spatial mix frames through caller-owned Web Audio resources. */
+import {createRoomResponse,validateRoomResponse} from './spatial-room-response.mjs';
 import * as sharedBudget from '../world-voice-budget.js';
 const voiceBudget=sharedBudget.default??globalThis[Symbol.for('ink-studio.world-voice-budget')];
 const clamp=(value,min,max)=>Math.min(max,Math.max(min,value));
@@ -19,6 +20,7 @@ export function createSpatialAudioPlayer(context, {
     throw new TypeError('Spatial audio bus destinations must be AudioNodes on the player context');
   const outputs=new Map(Object.entries(destinations)), output=voice=>outputs.get(voice.bus)??destination;
   const voices=new Map(), seen=new Set(), assets=new Map(), retiring=new Set();
+  const room=createRoomResponse(context,outputs.get('effects')??destination,asset);
   const fallback=voiceBudget.compile({maxVoices:maxVoices??32,reservedVoices:0});
   let disposed=false, previousTime=-Infinity, policy=fallback, configured=false;
   let inspection=Object.freeze({selected:[],rejected:[]});
@@ -120,6 +122,7 @@ export function createSpatialAudioPlayer(context, {
   function reset(){
     for(const row of voices.values())stop(row);
     for(const row of retiring)stop(row);
+    room.reset();
     seen.clear();
     inspection=Object.freeze({selected:[],rejected:[]});
     previousTime=-Infinity;
@@ -162,14 +165,16 @@ export function createSpatialAudioPlayer(context, {
       panner.panningModel=panning;
       panner.rolloffFactor=0;
       gain.connect(panner);panner.connect(output(live));nodes.push(panner);
+      if(room.input)panner.connect(room.input);
     }else gain.connect(output(live));
     return {voice:live,source,low,high,filter,gain,panner,nodes,tone,started:when,offset,remaining};
   }
 
-  function start(voice,at){
+  function start(voice,at,roomReady){
     const row={voice,when:at+voice.delay+(voice.startDelay??0),branches:[]};
     voices.set(voice.id,row);
-    row.pending=asset(voice.asset).then(buffer=>{
+    row.pending=(roomReady&&voice.position ? Promise.all([asset(voice.asset),roomReady]).then(([buffer])=>buffer) :
+      asset(voice.asset)).then(buffer=>{
       if(disposed||voices.get(voice.id)!==row)return;
       const live=row.voice;
       row.direct=branch(live,buffer,row.when);
@@ -222,6 +227,7 @@ export function createSpatialAudioPlayer(context, {
       frame.active.length+frame.cues.length>4096||
       frame.listener&&![frame.listener.position,frame.listener.forward,frame.listener.up].every(position))
       throw new TypeError('Expected a spatial audio mix frame');
+    validateRoomResponse(frame.roomResponse);
     const ids=new Set();
     for(const [rows,modes] of [[frame.active,['loop','clip']],[frame.cues,['cue']]])for(const row of rows){
       if(typeof row?.id!=='string'||ids.has(row.id)||typeof row.asset!=='string'||!modes.includes(row.mode)||
@@ -251,6 +257,9 @@ export function createSpatialAudioPlayer(context, {
       const capacity=maxVoices===undefined?authored?.maxVoices:Math.min(maxVoices,authored?.maxVoices??maxVoices);
       policy=authored?{...authored,maxVoices:capacity,reservedVoices:Math.min(authored.reservedVoices,capacity)}:fallback;
       if(seek||frame.time<previousTime)reset();
+      const hadRoom=Boolean(room.input), roomReady=room.update(frame.roomResponse);
+      if(!hadRoom&&room.input)for(const row of [...voices.values(),...retiring])
+        for(const part of row.branches)if(part.panner&&!part.ended)part.panner.connect(room.input);
       listen(frame.listener,previousTime===-Infinity);
       previousTime=frame.time;
       const desired=new Map();
@@ -278,7 +287,7 @@ export function createSpatialAudioPlayer(context, {
           action:voices.has(id)?'displaced':desired.get(id).mode==='cue'?'dropped':'virtual'})))});
       while(retiring.size>policy.maxVoices)stop(retiring.values().next().value);
       for(const row of voices.values())if(!selected.has(row.voice.id))stop(row,true);
-      const pending=[], at=context.currentTime;
+      const pending=roomReady?[roomReady]:[], at=context.currentTime;
       for(const [id,voice] of selected){
         let row=voices.get(id);
         if(row&&(row.voice.asset!==voice.asset||(!voice.contact&&row.voice.rate!==voice.rate)||
@@ -297,7 +306,7 @@ export function createSpatialAudioPlayer(context, {
             row.direct.voice=voice;
             tune(row.direct,false);
           }
-        }else pending.push(start(voice,at));
+        }else pending.push(start(voice,at,roomReady));
       }
       return Promise.all(pending).then(()=>undefined);
     },
