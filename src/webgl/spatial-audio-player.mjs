@@ -377,16 +377,23 @@ export function createSpatialAudioPlayer(context, {
       const candidates=[...desired.values()].map(voice=>({...voice,incumbent:voices.has(voice.id),
         gain:configured?Math.max(voice.gain,voice.contact?.targetGain??0):voice.gain}));
       const stable=configured||candidates.some(voice=>voice.priority!==undefined||voice.protected!==undefined);
-      const ranked=policy.aggregation&&listener?voiceBudget.selectWithTextures(candidates,policy,crowd.active(),stable):
-        voiceBudget.select(candidates,policy,stable);
+      const priority=frame.jointPriority;
+      const scoped=voiceBudget.prioritize(candidates,policy,priority&&voiceBudget.compilePriority(priority.sound));
+      const ranked=scoped.policy.aggregation&&listener?
+        voiceBudget.selectWithTextures(scoped.candidates,scoped.policy,crowd.active(),stable):
+        voiceBudget.select(scoped.candidates,scoped.policy,stable);
+      const promoted=new Set(priority?.sound.cues);
       const selected=new Map([...ranked.selected].map(id=>[id,desired.get(id)]));
       const info=(id,decision)=>{
         const {cue,priority=0,protected:critical=false,group}=desired.get(id);
-        return Object.freeze({id,cue,priority,protected:critical,...(group!==undefined&&{group}),...decision});
+        const focused=promoted.has(cue);
+        return Object.freeze({id,cue,priority:focused?100:priority,protected:focused||critical,
+          ...(focused&&{promoted:true}),...(group!==undefined&&{group}),...decision});
       };
-      inspection=Object.freeze({time:frame.time,limit:policy.maxVoices,reservedVoices:policy.reservedVoices,
+      inspection=Object.freeze({time:frame.time,limit:policy.maxVoices,reservedVoices:scoped.policy.reservedVoices,
+        ...(priority&&{priorityWindow:priority.id}),
         selected:Object.freeze([...selected.keys()].map(id=>info(id,{}))),
-        ...(policy.aggregation&&{aggregation:Object.freeze({slots:ranked.seats??0,count:ranked.overflow?.size??0})}),
+        ...(scoped.policy.aggregation&&{aggregation:Object.freeze({slots:ranked.seats??0,count:ranked.overflow?.size??0})}),
         rejected:Object.freeze([...ranked.rejected].map(([id,reason])=>info(id,{reason,
           action:ranked.overflow?.has(id)?'aggregated':voices.has(id)?'displaced':desired.get(id).mode==='cue'?'dropped':'virtual'})))});
       while(retiring.size>policy.maxVoices)stop(retiring.values().next().value);
@@ -394,7 +401,7 @@ export function createSpatialAudioPlayer(context, {
       const preparations=[roomReady,binaural?.ready].filter(Boolean);
       const positionedReady=preparations.length?Promise.all(preparations):undefined;
       const pending=positionedReady?[positionedReady]:[], at=context.currentTime;
-      const texture=crowd.update({seats:ranked.seats,config:policy.aggregation,listener,binaural,time:frame.time,
+      const texture=crowd.update({seats:ranked.seats,config:scoped.policy.aggregation,listener,binaural,time:frame.time,
         ready:positionedReady,voices:ranked.overflow?[...ranked.overflow].map(id=>desired.get(id)):[]});
       if(texture)pending.push(texture);
       for(const [id,voice] of selected){

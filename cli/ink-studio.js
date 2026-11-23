@@ -370,6 +370,14 @@ function passQualityOption() {
   if (typeof value !== 'string') die('--pass-quality needs a JSON file or off');
   return passQualityOverride ??= JSON.parse(fs.readFileSync(path.resolve(value), 'utf8'));
 }
+let jointPriorityOverride;
+function jointPriorityOption(){
+  const value=opt['joint-priority'];
+  if(value===undefined)return;
+  if(value==='off')return false;
+  if(typeof value!=='string')die('--joint-priority needs a JSON file or off');
+  return jointPriorityOverride??=JSON.parse(fs.readFileSync(path.resolve(value),'utf8'));
+}
 function shadowArtOption() {
   const value = opt['shadow-art'];
   if (value === undefined) return;
@@ -970,6 +978,7 @@ const view = extra =>
       reflections: opt.reflections === 'off' ? false : undefined,
       reflectionDetail: onOffOption('reflection-detail'),
       passQuality: passQualityOption(),
+      jointPriority: jointPriorityOption(),
       reflectionProbes: onOffOption('reflection-probes'),
       reflectionProxies: onOffOption('reflection-proxies'),
       transmission: onOffOption('transmission'),
@@ -1644,6 +1653,7 @@ const CMD = {
         'shoreline options: --shore-foam on|off',
         'lighting options: --highlight-cels on|off --cutout-shadows on|off --shadow-shells on|off --volume-local-lights on|off --volume-local-shadows on|off',
         'silhouette protection: --silhouette-protection on|off|file.json',
+        'joint load priorities: --joint-priority file.json|off',
         'shared focus track: --focus-track file.json|off',
         'layered horizon: --horizon-bands on|off|file.json',
         'staging: --fov radians | --focal-length mm [--sensor-height mm] --focus-distance units --composition u,v --camera-staging on|off|file.json --camera-guides [on|off] --depth-of-field [on|off]',
@@ -3245,7 +3255,7 @@ const CMD = {
       const native = require('./scene-export-world.js').readExportWorld(source, kit);
       const soundtrack = opt.audio ?? native?.audio;
       if (opt.mux !== undefined && soundtrack === undefined) die('A review mux needs a take soundtrack or --audio');
-      const audio = soundtrack === undefined ? undefined : require('./scene-audio.js').readSceneAudio(soundtrack, host);
+      const audio = soundtrack === undefined ? undefined : require('./scene-audio.js').readSceneAudio(soundtrack, { ...host, jointPriority:jointPriorityOption() });
       const video = opt.mux === undefined ? undefined : require('./graph-host.js').createGraphHost(host.adapters, { kit });
       video?.requireCodec(opt.mux, 'mux');
       const fpsText = opt.fps, fraction = typeof fpsText === 'string' && /^(\d+)\/(\d+)$/.exec(fpsText);

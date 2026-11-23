@@ -1,6 +1,7 @@
 const { performance } = require('node:perf_hooks');
 const frameBudget = require('../src/frame-budget.js');
 const PassQuality = require('../src/pass-quality.js');
+const JointPriority = require('../src/joint-priority.js');
 // Draws a world without a browser: motion kinds, projection of each splat's covariance to a screen ellipse,
 // blending from far to near, low-resolution sampling, dithering and palette quantization.
 const FOV = (38 * Math.PI) / 180;
@@ -365,7 +366,9 @@ function renderFrame(world, o, preparedPalettes) {
   const motion = RenderContract.clock(world, o), { direction, time: sceneTime, scene: t } = motion;
   const shutterRows = world[Shutter.rows];
   const protection = SilhouetteProtection.prepare(look.silhouetteProtection,o.silhouetteProtection);
-  const passQuality = PassQuality.prepare(o.passQuality ?? look.passQuality);
+  const jointPriority = JointPriority.prepare(o.jointPriority ?? look.jointPriority);
+  const priorityWindow = jointPriority && JointPriority.at(jointPriority.windows,sceneTime);
+  const passQuality = PassQuality.prioritize(PassQuality.prepare(o.passQuality ?? look.passQuality),priorityWindow?.picture);
   const authoredFocus = o.focusTrack === undefined ? look.focusTrack : o.focusTrack;
   const focusTrack = authoredFocus === undefined || authoredFocus === false ? null :
     require('../index.js').load().KIT.procedural.focusTrack;
@@ -1217,7 +1220,7 @@ function renderFrame(world, o, preparedPalettes) {
   const precipitation = Precipitation.frame(world, o.precipitation, {
     time: motion.rain, wind: windAt?.(motion.rain) ?? wind.velocity, windAt, weather: rainWeather, localWind, impacts: rainConfig, exposure,
     lamps: world.precipitationRanges?.length ? LightSchedule.select(world.lights || [], lampEye, { daylight }) : [],
-    localLighting: prepareVolumeLight
+    localLighting: prepareVolumeLight, keep:priorityWindow ? qualityRows?.keep : undefined
   });
   const rain = RainImpacts.frame(rainConfig, precipitation?.contacts, motion.rain);
   const volumeWind = !windConfig && world.volumeWind && !o.wind && !weather?.wind && !an.wind
@@ -3845,6 +3848,8 @@ function renderFrame(world, o, preparedPalettes) {
   if (paletteTrace) paletteTrace.steps.push(...paletteTrace.mask);
   const frame = finishLook({
     w: W, h: H, px, rgb: out, drawn, use,
+    ...(priorityWindow && {jointPriority:{id:jointPriority.id,window:priorityWindow.id,
+      particleRetain:passQuality?.particleRate??1,particlesSkipped:qualityRows?.particlesSkipped??0}}),
     ...(focusCue && {focusTrack:{id:focusPlan.id,subject:focusCue.to?.id ?? null,
       from:focusCue.from?.id ?? null,weight:focusCue.weight}}),
     ...(strand?.inspected && { strandPixel: strand.inspected }),

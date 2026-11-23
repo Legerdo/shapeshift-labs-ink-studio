@@ -590,6 +590,11 @@
       bad('finish.look.passQuality', error.message);
     }
     try {
+      JointPriority.prepare(look?.jointPriority);
+    } catch (error) {
+      bad('finish.look.jointPriority',error.message);
+    }
+    try {
       SdfAssist.prepare(look?.sdfAssist);
     } catch (error) {
       bad('finish.look.sdfAssist', error.message);

@@ -6,6 +6,7 @@ KIT.sceneMeshes = SceneMeshes;
 KIT.artStability = ArtStability;
 KIT.detailBudgets = DetailBudgets;
 KIT.passQuality = PassQuality;
+KIT.jointPriority = JointPriority;
 KIT.renderContract = RenderContract;
 KIT.colorClusters = ColorClusters;
 KIT.shotCorrections = ShotCorrections;
