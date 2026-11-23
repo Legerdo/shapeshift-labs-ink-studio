@@ -10,7 +10,7 @@ const tables = {objectId:'objects',materialId:'materials',partId:'parts'};
 
 function apply(input, {detail,edits}) {
   if (detail.w!==2*input.w || detail.h!==2*input.h) throw new RangeError('Pixel boundary replay grid changed');
-  const {w,h,color,depth,alpha,localAt,passes,outline}=input;
+  const {w,h,color,depth,alpha,localAt,passes,outline,locks}=input;
   const mapped={};
   for (const [channel,table] of Object.entries(tables)) {
     if (!passes[table]) continue;
@@ -19,7 +19,7 @@ function apply(input, {detail,edits}) {
     mapped[channel]=detail.passes[table].map(value=>names.get(key(value)) ?? 0);
   }
   for (const [p,q] of edits) {
-    if (passes.protected[p]) continue;
+    if (passes.protected[p] || locks?.[p]) continue;
     const a=flip(p,w,h), b=flip(q,detail.w,detail.h);
     color.set(detail.color.subarray(b*3,b*3+3),a*3);
     depth[a]=detail.depth[b];
@@ -38,13 +38,13 @@ function apply(input, {detail,edits}) {
 }
 
 function evidence(input) {
-  const {world,w,h,color,passes,glass,overlay,sun,live,lighting}=input;
+  const {world,w,h,color,passes,glass,overlay,locks,sun,live,lighting}=input;
   const size=w*h, key=new Float32Array(size), value=new Float32Array(size), excluded=new Uint8Array(size);
   const labels=Selectors.index(world), entries=Array.from({length:world.count},(_,i)=>labels.row(i));
   for (let p=0;p<size;p++) {
     const q=flip(p,w,h), n=p*3, b=q*3, i=passes.splatId[p]-1;
     value[p]=.2126*color[b]+.7152*color[b+1]+.0722*color[b+2];
-    excluded[p]=Number(glass[q]>.015 || Boolean(overlay?.slots[q]) || passes.protected[p] ||
+    excluded[p]=Number(locks?.[p] || glass[q]>.015 || Boolean(overlay?.slots[q]) || passes.protected[p] ||
       (Number.isFinite(passes.depth[p]) && passes.surfaceCoverage[p]<.6) ||
       Math.max(...passes.emission.subarray(n,n+3))>.04);
     if (!sun?.intensity || !Number.isFinite(passes.depth[p])) continue;

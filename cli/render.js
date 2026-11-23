@@ -3474,7 +3474,13 @@ function renderFrame(world, o, preparedPalettes) {
     if(temporalReport)o.surfaceHistoryFrame?.(temporalReport);
   }
   if (boundaryCapture || boundaryReplay) {
-    const input={world,w:W,h:H,color:col,depth:dep,alpha,passes,localAt,outline:paletteOutlines,glass:gls,overlay,
+    let locks;
+    if (nativeCelRows.length || protectedPlan) {
+      locks=new Uint8Array(W*H);
+      celKit.nativeCelPixels.pixels(nativeCelRows,W,H,(x,y)=>{locks[y*W+x]=1;});
+      for (const [x,y] of protectedPlan?.coordinates.values() ?? []) locks[y*W+x]=1;
+    }
+    const input={world,w:W,h:H,color:col,depth:dep,alpha,passes,localAt,outline:paletteOutlines,glass:gls,overlay,locks,
       sun,live,lighting:artLighting};
     if (boundaryCapture) boundaryCapture(input);
     if (boundaryReplay) PixelBoundaryShot.apply(input,boundaryReplay);
