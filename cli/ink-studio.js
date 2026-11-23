@@ -1500,6 +1500,7 @@ const CMD = {
         '  surface-pixel <id> --at x,y [--t seconds]   inspect the opaque native art-pixel owner',
         '  strand-pixel <id> --at x,y [--t seconds] [--previous seconds]   inspect visible strand hits on the native art grid',
         '  strand-review <id> --w 160 --h 96 [--curve-quality file.json] [--from 0 --to 3 --camera-orbit 20] [--out directory]',
+        '  export-deep <id> [--t 0,1,2] [--layers 16] [--reflection id] --out file.exr|directory   export native deep OpenEXR',
         '  export-layers <id> [--t 0,1,2 | --from 0 --to 2 --n 3] [--part-motion on] [--compositing file.json] [--out directory]   export RGBA and compositing layers',
         '  export-scene <scene|world|take> --out directory [--formats still,loop,replay,embed]',
         '    --audio soundtrack.json [--mux CODEC --adapters host.cjs]   export aligned WAV stems and optional video',
@@ -3051,6 +3052,23 @@ const CMD = {
       kit: lib(), frame, time, from, to, fps: num('fps',12), camera:clipCamera(world), replay, samplePose:pose
     }, directory);
     console.log('wrote', directory, report.frames.length, 'matched samples at', report.width + 'x' + report.height, 'art pixels');
+  },
+  'export-deep'() {
+    if (pos.length!==1 || typeof opt.out!=='string' ||
+        opt.t!==undefined && (typeof opt.t!=='string' || opt.t.split(',').some(t=>!t.trim())) ||
+        ['from','to','n','layers','reflection'].some(key=>opt[key]===true) ||
+        !Number.isSafeInteger(num('n',1)) || num('n',1)<1 || num('n',1)>512)
+      die('Use export-deep <scene> [--t seconds,... | --from seconds --to seconds --n count] --out file.exr|directory');
+    const ts = ['t','from','to','n'].some(key=>opt[key]!==undefined) ? times() : [0];
+    const world = buildPreview();
+    const {file,frames}=require('./deep-openexr.js').exportDeepEXR(world,{
+      out:opt.out,view:view({w:num('w',256),h:num('h',144),px:artPixelSize??1}),times:ts,pose,
+      layers:num('layers'),reflection:opt.reflection,coalesce:onOffOption('coalesce')!==false,
+      allowTruncated:onOffOption('allow-truncated')===true
+    });
+    console.log('wrote',file,frames.length,'frame(s)');
+    for (const frame of frames) if (frame.droppedSamples)
+      console.log('frame at',frame.time,'s dropped',frame.droppedSamples,'samples across',frame.truncatedPixels,'pixels');
   },
   'export-layers'() {
     if (pos.length !== 1 || opt.out === true)
