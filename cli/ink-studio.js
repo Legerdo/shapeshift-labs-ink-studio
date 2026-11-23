@@ -1546,6 +1546,8 @@ const CMD = {
         '  story shots-review <recording> <plan.json> --out directory [--all --w N --h N]',
         '  sim cast <world|checkpoint|run> --spec casting.json   explain who qualifies for a story role',
         '  patch show <cues.json> [--rehearse] [--report file]   run a cue-driven patch on a projector',
+        '    --capture-performance directory [--live-score timeline.json --live-route route.json]   capture beat-level workload around a fault',
+        '  patch stress <case.json> [--repeat N] [--out report.json]   replay the captured graph and score workload',
         '    [--record-interventions journal.ndjson [--intervention-input <recording.json|->]]',
         '  '+require('./patch-choice-replay.js').usage.replace('ink-studio ',''),
         '  graph nodes [--json]   list registered graph operations and their ports',

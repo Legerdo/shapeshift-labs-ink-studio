@@ -45,6 +45,7 @@ The package includes geometry, materials, lighting, animation, character control
 - [Blind audiovisual review](docs/blind-av-review.md)
 - [Video codec round-trip approval](docs/video-round-trip.md)
 - [Flash and flicker review](docs/flash-flicker-review.md)
+- [Beat-level live performance captures](docs/beat-performance-captures.md)
 - [Compressed-audio round-trip approval](docs/audio-round-trip.md)
 - [Playback translation through measured devices](docs/playback-translation.md)
 - [Display and speaker latency calibration](docs/output-latency.md)
