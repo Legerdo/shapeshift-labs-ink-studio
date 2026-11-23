@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {createHash} = require('node:crypto');
 const Binaural = require('../src/binaural-profile.js');
+const Radiation = require('../src/spatial-radiation.js');
 const WAV = require('./wav.js');
 const { readAudioSource, isSoundRecipe, decodeSoundRecipe } = require('./sound-source.js');
 const { mix } = require('./scene-audio-mix.js');
@@ -137,6 +138,7 @@ function createSceneAudio(definition, { kit = require('../index.js').load(), res
       const pan = right && at ? Math.max(-1, Math.min(1, V.dot(V.norm(V.sub(at, ear.position)), right))) : undefined;
       return { sample, gain: voice.gain, pan, cutoff: voice.cutoff, delay: delayed ? 0 : voice.delay,
         ...(binaural&&at&&{hrirAt:at}),
+        ...(voice.radiation&&{radiation:Radiation.shelf(voice.bands,voice.gain)}),
         ...(mixer?.voiceBudget&&{rankGain:Math.max(voice.gain,voice.contact?.targetGain??0)}),
         ...(voice.processing&&{processing:voice.processing}) };
     }
@@ -193,6 +195,7 @@ function createSceneAudio(definition, { kit = require('../index.js').load(), res
           ...(voice.selection && { selection:voice.selection }),
           ...(voice.processing&&(voice.processing.profiles.length||voice.audition)&&{processing:voice.processing}),
           ...(voice.sound && { sound:voice.sound }),
+          ...(voice.radiation && { radiation:voice.radiation,bands:voice.bands }),
           ...(voice.reflections && { reflections:voice.reflections.map(tap=>({...tap,
             arrivalSample:time+Math.round(tap.delay*sampleRate)})) }),
           ...(voice.audition && { audition:voice.audition }),
@@ -315,6 +318,7 @@ function createSceneAudio(definition, { kit = require('../index.js').load(), res
           report.lastPosition = live.position;
           report.lastStatus = live.status;
           if(live.processing)report.lastProcessing=live.processing;
+          if(live.radiation)report.lastRadiation=live.radiation;
         }
       }
     }

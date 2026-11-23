@@ -3,7 +3,7 @@
   const W=K.world, {check,record,own,copy}=W.data;
   const format='ink-studio/world-sound-pack', sourceFormat='ink-studio/world-sound-pack-source';
   const maxBytes=48*1024*1024, maxDocumentBytes=72*1024*1024, recipeBytes=64*1024, runBytes=8*1024*1024;
-  const tables=['cues','soundFamilies','bindings','materials'];
+  const tables=['cues','soundFamilies','bindings','materials','radiationProfiles'];
   const settings=['processing','contactLoops'];
   const kinds=['recipe','recording','run'];
   const fields=(row,keys)=>record(row)&&Object.keys(row).every(key=>keys.includes(key));

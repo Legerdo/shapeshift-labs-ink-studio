@@ -1,6 +1,7 @@
 /* Offline stereo resampling, panning, and stem summing on an absolute sample grid. */
 const WAV = require('./wav.js');
 const Binaural = require('../src/binaural-profile.js');
+const Radiation = require('../src/spatial-radiation.js');
 const {addRoomResponse} = require('./scene-room-response.js');
 
 const stereo = ['timeline', 'spatial', 'music', 'tracks'];
@@ -92,6 +93,25 @@ function contextualFilter(points, rate, parametric) {
   }};
 }
 
+function radiationFilter(points,rate,parametric) {
+  if (!points?.some(point=>point.radiation)) return;
+  const [lowHz,highHz]=Radiation.crossovers(rate), q=()=>Math.SQRT1_2;
+  const output=new Float64Array(2), unity={low:0,mid:1,high:0};
+  let lowDb=0, highDb=0;
+  const low=parametric.band('low-shelf',rate,()=>lowHz,q,()=>lowDb);
+  const high=parametric.band('high-shelf',rate,()=>highHz,q,()=>highDb);
+  return (l,r,from,to,t)=>{
+    const a=from??to??unity, b=to??a;
+    lowDb=a.low+t*(b.low-a.low);
+    highDb=a.high+t*(b.high-a.high);
+    const trim=a.mid+t*(b.mid-a.mid);
+    low(l,r,0,output);
+    high(output[0],output[1],0,output);
+    output[0]*=trim;output[1]*=trim;
+    return output;
+  };
+}
+
 // Taps inherit the source feed and its admission in the delayed sample range.
 function* arrivals(voices) {
   for (const voice of voices) {
@@ -127,11 +147,11 @@ function sumVoices(voices, resolve, { start, end, sampleRate, gain = 1, cues, pa
     const first = Math.max(inputStart, p.first), last = Math.min(p.end, end), stop=Math.min(end,last+tail);
     if (stop <= first) continue;
     const points = p.points, filters = Boolean(points?.some(row => row.cutoff < 22000));
-    const tone = contextualFilter(points, sampleRate, parametric);
+    const tone = contextualFilter(points, sampleRate, parametric), radiation=radiationFilter(points,sampleRate,parametric);
     // Restore the complete filter history for contextual audio when printing a crop.
-    const begin = tone || spans && filters ? p.first : filters ? Math.max(p.first, first - Math.ceil(sampleRate / 3)) : first;
-    const length = spans ? spans.reduce((sum,span)=>sum+Math.max(0,Math.min(span.end,last)-Math.max(span.first,begin)),0) : last-begin;
-    work += length * Math.max(2, source.channels) * (1 + (tone?.stages ?? 0));
+    const begin = tone || radiation || spans && filters ? p.first : filters ? Math.max(p.first, first - Math.ceil(sampleRate / 3)) : first;
+    const length = spans && !radiation ? spans.reduce((sum,span)=>sum+Math.max(0,Math.min(span.end,last)-Math.max(span.first,begin)),0) : last-begin;
+    work += length * Math.max(2, source.channels) * (1 + (tone?.stages ?? 0) + (radiation?2:0));
     if (pinned) binauralWork+=Math.max(0,stop-begin)*binaural.length;
     if (binauralWork>2.4e9) throw new RangeError('Scene soundtrack exceeds its binaural processing budget');
     if (work > 240e6) throw new RangeError('Scene soundtrack exceeds its mixing work budget');
@@ -164,7 +184,7 @@ function sumVoices(voices, resolve, { start, end, sampleRate, gain = 1, cues, pa
       if (spans) {
         while (spans[spanIndex]?.end <= sample) spanIndex++;
         const span = spans[spanIndex];
-        if (pinned&&(!span||sample<span.first)) admission=0;
+        if ((pinned||radiation)&&(!span||sample<span.first)) admission=0;
         else {
           if (!span) break;
           sample = Math.max(sample,span.first);
@@ -210,6 +230,7 @@ function sumVoices(voices, resolve, { start, end, sampleRate, gain = 1, cues, pa
       const position = a?.sourceTime === undefined ? p.sourceStart + (elapsed - p.first) * p.sourceStep :
         (a.sourceTime + (elapsed - a.sample) * a.rate / sampleRate) * source.sampleRate;
       let l = stereoSource(source, position, p.loop, 0), r = stereoSource(source, position, p.loop, 1);
+      if (radiation) [l,r]=radiation(l,r,a?.radiation,b?.radiation,u);
       if (tone) {
         const filtered = tone.process(a?.processing, l, r);
         l = filtered[0];

@@ -393,6 +393,8 @@ Blend recorded or baked room impulse responses as the listener moves, with tails
 
 Pin the same headphone impulse dataset for live audio and deterministic headless spatialization. [Pinned binaural profiles](docs/pinned-binaural.md)
 
+Shape the bass, mids, and treble an emitter sends toward the listener as its body rotates. [Directional sound emitters](docs/directional-audio.md)
+
 <!-- include: examples/puppet.js -->
 
 ```js

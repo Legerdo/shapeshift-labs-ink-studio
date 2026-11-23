@@ -65,7 +65,7 @@ when the player is removed. The caller owns the context and can resume it
 from a user gesture. Cue assets stay under host control.
 [Web Audio API](https://www.w3.org/TR/webaudio/)
 
-Add a [pinned binaural profile](pinned-binaural.md) to use a project-selected headphone response in preview and export.
+Add a [pinned binaural profile](pinned-binaural.md) to use a project-selected headphone response in preview and export. Add an [emitter radiation profile](directional-audio.md) to vary each band with the source orientation.
 
 ## Select a take from contact context
 
