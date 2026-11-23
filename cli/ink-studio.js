@@ -1141,6 +1141,8 @@ const CMD = {
         '  render, clip, transition-review, sim render: --recipe <shot.json>   save reproducible review inputs',
         '  shot replay <shot-or-bundle.json> --out <image.png> [--root project | --shot ID]   verify the saved render',
         '  shot approve <scene> [--plan plan.json] --out report.json [--frame N] [--report-only]',
+        '  shot light-paint <scene> --shot-lighting rig.json --out targets.html [--t seconds] [--w W --h H]',
+        '  shot light-fit <scene> --shot-lighting rig.json --targets targets.json --out folder [--evaluations N] [--interactive]',
         '  render <scene.json> --asset-pack <pack-or-bundle.json> [--environment-preset pack/preset]   install and select a reusable look',
         '  ramps <id> [--n 12]         the ramps it is shaded on, and which only get darker without turning; a turning one is offered from the same palette',
         '  values <id> [--t 1.5]       the value check: the picture sorted into dark, middle and light, and whether it reads in three tones',
@@ -2148,6 +2150,37 @@ const CMD = {
     console.log(warn.length ? 'warnings:\n  ' + warn.join('\n  ') : 'no warnings');
   },
   shot() {
+    if (pos[0] === 'light-paint' || pos[0] === 'light-fit') {
+      const paint = pos[0] === 'light-paint';
+      if (pos.length !== 2 || typeof opt.out !== 'string' ||
+          (paint ? !/\.html$/i.test(opt.out) : typeof opt.targets !== 'string'))
+        die(paint ? 'Use shot light-paint <scene> --out targets.html' :
+          'Use shot light-fit <scene> --targets targets.json --out folder');
+      const { capture, fitShotLighting } = require('./shot-light-fit.js');
+      const output = require('./shot-light-output.js');
+      const plan = paint ? undefined : JSON.parse(fs.readFileSync(path.resolve(opt.targets), 'utf8'));
+      const frame = paint ? { grid: [num('w', 160), num('h', 120)], time: num('t', 0) } : plan;
+      if (!frame || !Number.isFinite(frame.time) || frame.time < 0 ||
+          !paint && (opt.t !== undefined && num('t') !== frame.time ||
+            opt.w !== undefined && num('w') !== frame.grid?.[0] || opt.h !== undefined && num('h') !== frame.grid?.[1]) ||
+          artPixelSize !== undefined && artPixelSize !== 1)
+        die('Painted lighting uses the target time, native art dimensions and --px 1');
+      const world = buildPreview(pos[1]);
+      pose(world, frame.time);
+      const settings = view({ t: frame.time });
+      if (paint) {
+        output.writePainter(path.resolve(opt.out), capture(world, { frame, view: settings }));
+      } else {
+        if (opt.interactive !== undefined && opt.interactive !== true) die('--interactive is a flag');
+        const preview = opt.interactive && output.previewBank();
+        const result = fitShotLighting(world, { plan, view: settings, evaluations: num('evaluations', 64), kit: lib(),
+          onCandidate: preview ? preview.add : undefined });
+        output.writeFit(path.resolve(opt.out), plan, result, preview?.rows);
+        console.log(result.report.status, 'after', result.report.work.evaluations, 'candidate evaluations');
+      }
+      console.log('wrote', path.resolve(opt.out));
+      return;
+    }
     if (pos[0] === 'approve') {
       if (pos.length !== 2 || opt.plan === true || typeof opt.out !== 'string' || !/\.json$/i.test(opt.out) ||
           opt.frame === true || opt['report-only'] !== undefined && opt['report-only'] !== true)

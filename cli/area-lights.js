@@ -79,7 +79,7 @@ function createLighting(lights, world, data, alpha, { spots = [], shadow, cutout
     if (!rig) return rgb.map(n => 1 + n);
     const additional = [0, 0, 0];
     const retention = rig.sample(row, point, normal, additional);
-    return rgb.map((n, c) => n + additional[c] + retention);
+    return rgb.map((n, c) => (n + additional[c] + retention) * rig.exposure);
   }
 
   function shade(pixel, point, normal, rgb, fog, fogMix = 0, row, biasNormal) {
