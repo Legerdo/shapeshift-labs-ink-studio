@@ -19,7 +19,7 @@ whether world state carries or resets. `warmup` evaluates preceding graph
 frames without including them in either export.
 
 Use the [delivered sync check](delivered-sync.md) to compare visible contact
-in the numbered frames with the attack in the published WAV.
+in the numbered frames with the attack in the published WAV. Run a [blind audiovisual review](blind-av-review.md) to measure what people pick up from each medium.
 
 ## Describe the take
 
