@@ -923,10 +923,11 @@ const view = extra =>
       aerialPerspective: aerialOption(),
       volumeLocalLights: onOffOption('volume-local-lights'),
       volumeLocalShadows: onOffOption('volume-local-shadows'),
-      volumeQuality: opt['volume-scale'] || opt['volume-steps'] || opt['volume-jitter'] ? {
+      volumeQuality: opt['volume-scale'] || opt['volume-steps'] || opt['volume-jitter'] || opt['volume-reconstruction'] ? {
         ...(opt['volume-scale'] && { scale: num('volume-scale') }),
         ...(opt['volume-steps'] && { steps: num('volume-steps') }),
-        ...(opt['volume-jitter'] && { jitter: opt['volume-jitter'] })
+        ...(opt['volume-jitter'] && { jitter: opt['volume-jitter'] }),
+        ...(opt['volume-reconstruction'] && { reconstruction: opt['volume-reconstruction'] })
       } : undefined,
       edges: opt.edges === 'off' ? false : undefined
     },
@@ -1184,6 +1185,8 @@ const CMD = {
         '  bounce-probes bake <scene> [--bounce-probes settings.json] --out probes.json',
         '  bounce-probes review <scene> --out directory [--from 0 --to 3 --fps 12 --w 184 --h 112]',
         '  sdf-reference <scene> --out directory [--t 0,1.2 --w 192 --h 120 --samples 32 --bounces 3]',
+        '  render/clip --volume-scale 3 --volume-reconstruction object|depth   choose a coarse fog reconstruction',
+        '  fog-reconstruction review <scene> --out directory [--subject object-id --volume-scale 4 --from 0 --to 2.4 --fps 10]',
         '  render/clip --dynamic-bounce off   reuse the baked probes without sampling moving sources',
         '  render <id> --palette-constraints <file.json|off>   override target palettes and dither settings',
         '  render <id> --coverage-aware on|off   grade target contributions before compositing',
@@ -1985,6 +1988,22 @@ const CMD = {
       seed:num('trace-seed',1),exposure:num('reference-exposure',1) });
     const report = api.review(buildPreview(pos[0],{ retainReferenceSdf:true }),directory,{ ...settings,pose,view });
     console.log('Traced',report.frames.length,'native reference frames. Wrote',directory);
+  },
+  'fog-reconstruction'() {
+    const [action,id]=pos;
+    if (action!=='review' || !id || pos.length!==2 || typeof opt.out!=='string' ||
+        opt.subject!==undefined && (typeof opt.subject!=='string' || !opt.subject.trim()))
+      die('Use fog-reconstruction review <scene> --out directory [--subject object-id --volume-scale 4]');
+    if (artPixelSize!==undefined && artPixelSize!==1) die('Fog review captures native art pixels');
+    const directory=outputFile('fog-reconstruction-review');
+    if (['depth.png','object.png','native.png','review.json','index.html']
+      .some(name=>path.resolve(id)===path.join(directory,name))) die('Write the fog review separately from its input');
+    const world=buildPreview(id);
+    const report=require('./fog-reconstruction-review.js').review(world,directory,{
+      pose,view,width:num('w',192),height:num('h',112),from:num('from',0),to:num('to',2.4),
+      fps:num('fps',10),scale:num('volume-scale',world.volumeQuality?.scale>1 ? world.volumeQuality.scale : 4),subject:opt.subject
+    });
+    console.log('Compared',report.samples.length,'fog frames. Wrote',directory);
   },
   environment() {
     if (pos[0] === 'aesthetics') {

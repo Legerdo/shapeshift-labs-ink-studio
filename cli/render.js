@@ -1588,6 +1588,10 @@ function renderFrame(world, o, preparedPalettes) {
     ...mediaOptions, reflectionPlane, reflection, reflectionBackground: bg, reflectionDetail:o.reflectionDetail, waterTransition: blendDepth,
     deep: Boolean(deep), matteCount:mattes?.count
   }, air) : null;
+  const fogQuality = !rayMedia && axialDepth && atmosphereOptions();
+  const fogOwners = fogQuality && fogQuality.scale > 1 && fogQuality.reconstruction === 'object' &&
+    world.renderMetadata?.objectIds && new Uint32Array(W*H);
+  const fogOwnerRows = fogOwners && world.renderMetadata.objectIds;
   const retainLayers = retainContributions || Boolean(rayMedia || deep);
   const col = new Float32Array(W * H * 3),
     dep = new Float32Array(W * H),
@@ -1789,6 +1793,7 @@ function renderFrame(world, o, preparedPalettes) {
         if (pixelBudgets) pixelBudgets[p] = (cleanupFlags[i] ?? 0) | DetailBudgets.OWNED;
         if (win) win[p] = sectionEdge || surface?.reveals(i) ? -1 : i;
         if (axialDepth) axialDepth[p] = opticalDepth;
+        if (fogOwners) fogOwners[p] = fogOwnerRows[i] ?? 0;
         if (fogScales || silhouetteMask) subjectPixel(p,rule);
       }
     } else if (glass) gls[p] = Math.min(1, gls[p] + a * 0.5);
@@ -2946,7 +2951,7 @@ function renderFrame(world, o, preparedPalettes) {
         A = AN.data,
         sprD = new Float32Array(W * H).fill(9),
         sprC = new Int16Array(W * H).fill(-1),
-        sprOwner = art || foreground || subject || relight || deep ? new Int32Array(W * H) : null;
+        sprOwner = art || foreground || subject || relight || deep || fogOwners ? new Int32Array(W * H) : null;
       for (let a = 0; a < AN.n; a++) {
         const q0 = a * 12,
           ed = EP[A[q0 + 8]];
@@ -3053,6 +3058,7 @@ function renderFrame(world, o, preparedPalettes) {
         if (transparent) captured[q] = 1;
         if (edgePixels) edgePixels[q] = 0;
         if (axialDepth) axialDepth[q] = eyeD - R + sprD[q] * 2 * R;
+        if (fogOwners) fogOwners[q] = fogOwnerRows[sprOwner[q]] ?? 0;
         if (art) art.sprite(q, sprOwner[q], eyeD - R + sprD[q] * 2 * R);
         if (deep) {
           const depth = eyeD - R + sprD[q] * 2 * R;
@@ -3095,12 +3101,14 @@ function renderFrame(world, o, preparedPalettes) {
       if (effectMedia) rayMedia.contributions(effectMedia, q * 3);
     }
     atmosphere = { fog };
-  } else if (axialDepth && !rayMedia) {
-    const quality = atmosphereOptions();
+  } else if (fogQuality) {
+    const quality = fogQuality;
     atmosphere = applyAtmosphere(volumes, col, axialDepth, rayAt, W, H, horizon, quality, t, quality.media,
       captureFog || effectMedia || transparent || fogPass, o.volumeHistory,
-      o.volumeHistory && [W, H, focal, ortho, o.volumeLocalLights, o.volumeLocalShadows, o.cutoutShadows, o.shadowShells,
-        ShadowCutouts.historyKey(cutoutsForLight), ...V].join('/'), fogScales);
+      o.volumeHistory && [W,H,focal,ortho,quality.scale,quality.reconstruction,quality.depthTolerance,quality.samples,
+        quality.seed,quality.jitter,quality.maxSteps,quality.stepScale,
+        o.volumeLocalLights,o.volumeLocalShadows,o.cutoutShadows,o.shadowShells,ShadowCutouts.historyKey(cutoutsForLight),...V].join('/'),
+      fogScales, fogOwners || undefined);
     if (effectMedia) for (let p = 0; p < W*H; p++) {
       effectMedia[p*3] = atmosphere.fog[p];
       effectMedia[p*3+2] = 1-atmosphere.fog[p];
