@@ -1138,7 +1138,7 @@ function renderFrame(world, o, preparedPalettes) {
   const volumeConfig={...world.volumeQuality,...o.volumeQuality};
   const depthFogRequested=volumes.length && (volumeConfig.reconstruction==='lighting' || volumeConfig.composition==='depth');
   const captureFogOwners=depthFogRequested && N===0;
-  const localProjection=(!reflectionPlane && !probeView && !o.captureCoverage) &&
+  const localProjection=reflectionPlane || probeView || o.captureCoverage ? null :
     Multiprojection.frame(Multiprojection.prepare(o.multiprojection ?? look.multiprojection),surfaceLayers,
       {V,ortho,near,w:W,h:H,focal,time:t});
   const surfaceFragments = SurfaceRaster.rasterize(surfaceLayers, { V, W, H, focal, ortho, near,simulationLayers,
