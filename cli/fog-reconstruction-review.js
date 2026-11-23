@@ -74,6 +74,16 @@ function review(world, directory, { pose,view,width,height,from,to,fps,scale,sub
     samples.push({ frame:i,time,crop,...edges,renderStats });
     pictures.push(picture);
   }
+
+  // Track the subject with a fixed-size crop so stepping through the shot keeps the same magnification.
+  const cropWidth=Math.max(...samples.map(sample=>sample.crop?.w ?? 0));
+  const cropHeight=Math.max(...samples.map(sample=>sample.crop?.h ?? 0));
+  for (const {crop} of samples) if (crop) {
+    crop.x=Math.max(0,Math.min(width-cropWidth,crop.x-Math.floor((cropWidth-crop.w)/2)));
+    crop.y=Math.max(0,Math.min(height-cropHeight,crop.y-Math.floor((cropHeight-crop.h)/2)));
+    crop.w=cropWidth;
+    crop.h=cropHeight;
+  }
   const report={ format:'ink-studio/fog-reconstruction-review', version:1, title:world.name??'Fog reconstruction',
     scene:world.id??null,subject:subject??null,width,height,from,to,fps,scale,samples };
   for (const id of lanes) write(path.join(directory,id+'.png'),PNG.encodeAnimation(movies[id],fps));

@@ -99,6 +99,7 @@ test('fog review exports synchronized clips and measures the moving subject edge
   assert.equal(report.format,'ink-studio/fog-reconstruction-review');
   assert.equal(report.samples.length,3);
   assert(report.samples.every(s=>s.crop && s.objectError===0 && s.renderStats.object.rays<s.renderStats.native.rays*.5));
+  assert.equal(new Set(report.samples.map(s=>s.crop.w+'×'+s.crop.h)).size,1);
   assert(report.samples.some(s=>s.correctedPixels>0));
   for (const lane of ['depth','object','native']) {
     const image=fs.readFileSync(path.join(out,lane+'.png'));
