@@ -1420,6 +1420,7 @@ const CMD = {
         '  music mix render recipe.json [--focus-track file.json|off] --out directory   render routed audio, inserts, automation and taps',
         '  music mix audition recipe.json --strip ID --insert ID --out directory   print a matched insert comparison and difference',
         '  music mix meter input.wav [--out report.json]   measure loudness, true peak and mono compatibility',
+        '  music mix translate <plan.json> --out directory   audition measured devices and check bass-dependent cues',
         '  music mix monitor input.wav --mode mono|small-speaker|stereo --out directory   audition the mix',
         '  music rack list|describe [rack]   discover built-in racks or inspect a definition',
         '  music rack state rack [settings.json] --out state.json   save recalled macro automation',

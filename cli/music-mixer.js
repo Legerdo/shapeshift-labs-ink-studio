@@ -70,11 +70,16 @@ function audition({mixer},assets,host,opt,P) {
   return manifest;
 }
 
-module.exports=function mixCommand([mode,file],opt,kit) {
+module.exports=function mixCommand([mode,file,...extra],opt,kit) {
+  if (mode==='translate') {
+    const translation=require('./playback-translation.js');
+    if (extra.length) throw new TypeError('Use '+translation.usage);
+    return translation.command(file,opt,kit);
+  }
   const P=kit.KIT.procedural;
   if (file && (mode==='meter' || mode==='monitor')) return measure(mode,file,opt,P);
   if (!['render','audition'].includes(mode) || !file || typeof opt.out!=='string')
-    throw new TypeError('Use music mix render, audition, meter or monitor with a recipe or WAV');
+    throw new TypeError('Use music mix render, audition, meter, monitor or translate with a recipe or WAV');
   const {fields,check}=P.musicInstruments;
   const recipe=JSON.parse(fs.readFileSync(file,'utf8'));
   check(fields(recipe,['mixer','assets']),'Expected a mixer and a table of WAV or sound recipe assets');
