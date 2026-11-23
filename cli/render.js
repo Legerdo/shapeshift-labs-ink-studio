@@ -176,7 +176,9 @@ function render(world, o, preparedPalettes) {
   if (o[deepScope] === undefined && (o.deepComposite ?? world.look?.deepComposite) !== undefined) {
     o[deepScope] = DeepComposite.settings(o.deepComposite ?? world.look?.deepComposite);
   }
-  if (o[matteScope] && o[deepScope] == null && !o.reflectionPlane) o[deepScope] = DeepComposite.settings({layers:1});
+  // Projected diagnostics use the shot's normal fragment ordering for a replayable camera review.
+  if (o[matteScope] && !o[matteScope].projected && o[deepScope] == null && !o.reflectionPlane)
+    o[deepScope] = DeepComposite.settings({layers:1});
   if (o?.cameraGuides && !o.samples && !o.captureCoverage) {
     const staging = o.cameraStaging ?? world.look?.cameraStaging;
     return CameraStaging.overlay(render(world, { ...o, cameraGuides: false, cameraStaging: staging || true }, preparedPalettes));

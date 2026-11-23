@@ -86,6 +86,7 @@ test('native projected mattes preserve a rear actor under an opaque splat', () =
   const center = 18 * 49 + 24;
   assert(Ink.objectMatte(frame, { object: 'back', view: 'projected' }).data[center] > .95);
   assert(Ink.objectMatte(frame, { object: 'back', view: 'camera' }).data[center] < .05);
+  assert.equal(frame.deep, undefined);
   assert.deepEqual(frame.rgb, Ink.render(world, view).rgb);
 });
 
