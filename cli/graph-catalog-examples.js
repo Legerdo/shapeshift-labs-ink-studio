@@ -233,6 +233,11 @@ const specifications = {
   'raster.canvas': { inputs: { color: [60, 135, 190, 255] } },
   'raster.channels': { inputs: { planes: [mask, mask, mask] } },
   'raster.math': { inputs: { op: 'add', b: 2 } },
+  'raster.mouthCels': { inputs: { face: rgba, cels: {rest:rgba}, sheet: {
+    format:'ink-studio/mouth-cels',version:1,id:'mouth',fps:12,frames:1,
+    rig:{grid:[4,4],origin:[0,0],size:[4,4],rest:'rest',poses:['rest']},
+    holds:[{id:'rest',from:0,to:1,pose:'rest',approval:'approved',phones:[]}]
+  } } },
   'raster.crop': { inputs: { options: { x: 1, y: 1, width: 2, height: 2 } } },
   'raster.resize': { inputs: { options: { width: 8, height: 6, filter: 'nearest' } } },
   'raster.nineSlice': { inputs: { options: { width: 8, height: 6, insets: [1, 1, 1, 1] } } },
