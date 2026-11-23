@@ -44,9 +44,10 @@ function show(take){
   ui['source-label'].textContent=found?instrument[found.part]+' on the '+project.labels[found.source]+' path':'Heard on the route';
   notes(ui.heard,found?.notes);
   notes(ui.recall,recall.notes);
+  const count=found?.notes.length??0;
   ui.provenance.textContent=recall.version?
     `${recall.version.notes.length} heard attacks from one ${project.labels[recall.version.source]} performance.`:
-    `${found?.notes.length??0} heard attacks. This recall needs at least three.`;
+    `${count} heard ${count===1?'attack':'attacks'}. This recall needs at least three.`;
 }
 function setTake(take){
   audio.pause();
