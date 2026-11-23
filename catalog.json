@@ -307,6 +307,17 @@
       "example": "demos/labscenes.js sceneBench (the beetle)"
     },
     {
+      "id": "anim.motion-matching",
+      "kind": "rig",
+      "status": "ready",
+      "title": "Motion matching for procedural foot rigs",
+      "what": "Index entry poses by foot contact, swing phase, velocity, and intended heading. On a steering change, retain planted contacts and redirect the swing from its current position and velocity.",
+      "use": "K.gait({ feet, motionMatching: true })",
+      "where": "src/kit/k3-motion-matching.js, docs/motion-matching.md",
+      "example": "examples/motion-matching/index.html",
+      "tags": ["walk", "locomotion", "steering", "procedural rig", "motion matching"]
+    },
+    {
       "id": "sdf.ops",
       "kind": "op",
       "status": "ready",
