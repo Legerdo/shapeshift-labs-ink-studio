@@ -55,8 +55,9 @@ ink-studio music mix render session.json --out take
 - **Inserts** name processors in a separate bank. Replace a definition or
   reorder the strip's insert names without editing the clips or score.
   An insert can take its dynamics detector from another strip's
-  `input`, `pre`, or `post` tap. Leave the sidechain out to detect the
-  insert's own input. An inaudible key strip can use `output: null`.
+  `input`, `pre`, or `post` tap. Inserts that support self-detection
+  read their own input when the sidechain is omitted. An inaudible key
+  strip can use `output: null`.
 - **Input gain** takes a linear 0–1 value before inserts and before the
   input tap. It can be automated with `inputGain`.
 - **Faders** take a linear gain, with 1 at unity and 0 at silence. Stereo
@@ -106,6 +107,7 @@ Beat, second, and sample lanes can coexist in one mixer.
 | `saturation` | Soft clipping with drive, asymmetry, tone, output trim, and optional 2×, 4×, or 8× oversampling |
 | `limiter` | Stereo-linked true-peak ceiling with lookahead and release |
 | `deesser`, `band-duck` | Dialogue-focused dynamic EQ with an optional external key for band ducking |
+| `spectral-sidechain` | Required external key, fixed maximum cut, activity threshold, attack, release, and frequency range. [Spectral sidechain](spectral-sidechain.md) |
 
 Inserts have a sample-accurate `wet` control between 0 and 1, with a
 fully wet limiter. Unmarked parameters accept automation. Every insert declares its

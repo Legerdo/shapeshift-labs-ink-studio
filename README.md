@@ -399,6 +399,8 @@ Call back to the motif version played on the route, with its rhythm or intervals
 
 Split a recording into tonal and transient layers, then move or retune them in one session. [Harmonic and percussive separation](docs/harmonic-percussive-separation.md)
 
+Make room for a foreground part by attenuating the frequencies it shares with a competing strip. Set a ceiling for the cut and audition it in context. [Spectral sidechain](docs/spectral-sidechain.md)
+
 Pin the same headphone impulse dataset for live audio and deterministic headless spatialization. [Pinned binaural profiles](docs/pinned-binaural.md)
 
 Shape the bass, mids, and treble an emitter sends toward the listener as its body rotates. [Directional sound emitters](docs/directional-audio.md)
