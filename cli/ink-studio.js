@@ -1551,6 +1551,7 @@ const CMD = {
         '  take sample <take.json> --frame N [--iteration N --resume checkpoint.json --checkpoint file.json --out report.json]',
         '  take map <clock-map.json> [--format report|timeline] [--out file.json]   map events and dialogue words through an exact editorial cut',
         '  take render-av <recipe.json> --out directory   publish synchronized picture controls, PNGs and WAV',
+        '  take check-sync <recipe.json> [--out report.json] [--fail-on-flags]   compare visible contact and rendered attack',
         '  timeline <scene> [--at seconds] [--from seconds --to seconds] [--out report.json]  sample tracks and export cues',
         '  authored-contacts <id> [--at seconds] [--out report.json]  inspect contact ranges and socket transfer timing',
         '  motion-fx <id> [--at seconds] [--out report.json]  inspect keyed FX layers and sampled effect output',
