@@ -62,6 +62,8 @@ const SelectiveTransparency = require('../src/selective-transparency.js');
 const LocalTransparency = require('./selective-transparency.js');
 const GaussianFilter = require('../src/gaussian-filter.js');
 const SdfAssist = require('../src/sdf-assist.js');
+const TracedLighting = require('./traced-lighting.js');
+const SplatFit = require('./splat-fit-asset.js');
 const SdfRaster = require('./sdf-assist.js');
 const { footprint, exportOffsets, coverageOffsets, sampledDepth } = require('./splat-sampling.js');
 const CurveCoverage = require('./curve-coverage.js');
@@ -180,7 +182,7 @@ function render(world, o, preparedPalettes) {
   if (world.gltfParts && o?.raw === undefined) o = { ...o, raw:true };
   if (world.anim?.bones && (!world.rest || world.rest===world.data)) {
     const { KIT }=require('../index.js').load();
-    if (KIT.poseCorrectives.forWorld(world)?.size)
+    if (KIT.poseCorrectives.forWorld(world)?.size || (o?.sdfAssist ?? world.look?.sdfAssist)?.posed)
       world={...world,rest:world.data,data:KIT.bones.posed({...world,posedBuf:undefined})};
   }
   o = RenderContract.options(world, o, (w, frame) => require('../index.js').load().KIT.timeDomains.frame(w, frame));
@@ -425,6 +427,8 @@ function renderFrame(world, o, preparedPalettes) {
   const coverageMode = ContributionRules.coverageMode(o.splatCoverage ?? look.splatCoverage);
   const contactSettings = ContactShadows.prepare(o.contactShadows ?? look.contactShadows);
   const orderMode = o.splatOrder ?? look.splatOrder ?? 'center';
+  const traced = TracedLighting.prepare(world,o.tracedLighting ?? look.tracedLighting);
+  const fitted = SplatFit.prepare(world,o.splatFit ?? look.splatFit);
   const sdfSettings = SdfAssist.prepare(o.sdfAssist ?? look.sdfAssist);
   const areaLights = AreaLights.prepare(o.areaLights === true ? world.areaLights : o.areaLights ?? world.areaLights,{time:t});
   const shotLighting = ShotLighting.frame(world.shotLighting, o.shotLighting, t);
@@ -1439,6 +1443,8 @@ function renderFrame(world, o, preparedPalettes) {
       z = d[q + 2],
       al = d[q + 3],
       sc = 1;
+    const footprintScale=fitted?.[i];
+    if (footprintScale===0) continue;
     const kraw = Math.round(d[q + 11]),
       kind = kraw % 16,
       ph = d[q + 12],
@@ -1574,7 +1580,7 @@ function renderFrame(world, o, preparedPalettes) {
     Z[i] = z;
     if (hidden) hiddenCastOpacity.set(i,al);
     else AL[i] = al;
-    SC[i] = sc;
+    SC[i] = sc*(footprintScale ?? 1);
     depth[i] = V[2] * x + V[6] * y + V[10] * z + V[14];
   }
   function prepareCurve(i, camera, carrier, forShadow = false, replacement, opacity=AL[i]) {
@@ -1616,7 +1622,7 @@ function renderFrame(world, o, preparedPalettes) {
       if (opacity>0) return prepareCurve(i,camera,carrier,true,undefined,opacity);
     } : undefined;
     live = LiveSun.create(sun, world, { x: X, y: Y, z: Z, alpha: AL, scale: SC }, normalAt, cloudShadow, exposure?.light,
-      { shadowArt: o.shadowArt, footprint: shadowFootprint, curveAt, curveData:d, artLighting,
+      { shadowArt: o.shadowArt, footprint: shadowFootprint, curveAt, curveData:d, artLighting, traced,
         curveProxyAt:shadowProxies?.size ? (i,camera,opacity)=>prepareCurve(i,camera,world,true,undefined,opacity) : undefined,
         curveStats:counters && !reflectionPlane && !probeView ? stats=>{counters.strandShadows=stats;} : undefined,
         probes: probes && ((i,x,y,z,n) => n && probeReceiver(i) ? probes.sample([x,y,z],n) : null) });
@@ -2002,12 +2008,13 @@ function renderFrame(world, o, preparedPalettes) {
         choices && paletteTrace.forStage(choices));
       stageBase = reference && (paintedAlbedo?.slice() ?? reference);
       if (live?.normal(i)) {
-        live.gains(i,...position,sunGains);
+        live.gains(i,...position,sunGains,sprite.normal);
         color=color.map((v,k)=>v*sunGains[k]);
       }
       if (directLight?.receives(i) && diffuseNormal(i)) color = directLight(sprite.p, position, sprite.normal, color, undefined, 0, i);
       if (!live?.normal(i) && probeReceiver(i))
         color = probes.shade(position,shadeNormal(i,sprite.normal),color,undefined,0,probeAlbedo(i));
+      if (!live?.normal(i) && traced?.at(i)) color=traced.add(i,color,paintedAlbedo ?? probeAlbedo(i));
       if (surface?.has(i) && !PIX?.[i*8]) {
         const value=surface.shade(i,...position,X[i],Y[i],Z[i],...color,sprite.p%W+.5,Math.floor(sprite.p/W)+.5,
           undefined,fragmentReflection,paintedAlbedo,stageBase,planarMatte);
@@ -2607,7 +2614,7 @@ function renderFrame(world, o, preparedPalettes) {
         }
         if (liveNormal) {
           const point = exact?.position ?? surfacePoint(rayAt(ix + .5, iy + .5), liveNormal, x, y, z, -cz, R);
-          live.gains(i, ...point, sunGains);
+          live.gains(i, ...point, sunGains, exact?.normal);
           pr *= sunGains[0];
           pg *= sunGains[1];
           pb *= sunGains[2];
@@ -2651,6 +2658,8 @@ function renderFrame(world, o, preparedPalettes) {
           if (directReceiver) [pr,pg,pb] = directLight(p,point,n,[pr,pg,pb],fog,centerFog ? fogMix : 0,i);
           if (localProbe) [pr,pg,pb] = probes.shade(point,shadeNormal(i,n),[pr,pg,pb],fog,centerFog ? fogMix : 0,localAlbedo);
         }
+        if (!liveNormal && traced?.at(i))
+          [pr,pg,pb]=traced.add(i,[pr,pg,pb],probeAlbedo(i),fog,centerFog ? fogMix : 0);
         if (curveLight || lightingCurveNormal && curveHit?.normal || curveEmission || curveReceives) {
           const [u, v] = curveFootprint?.offset ?? [0, 0];
           const ray = rayAt(ix + .5 + u, iy + .5 + v), curveView = ray.direction;
@@ -2923,7 +2932,7 @@ function renderFrame(world, o, preparedPalettes) {
         HZ[p] = pz;
         if (live?.normal(i)) {
           if (bounceTints) {
-            lit[p] = live.rampLevel(i, px, py, pz, sunGains);
+            lit[p] = live.rampLevel(i, px, py, pz, sunGains, sdf?.hits[p]?.row.i===i ? sdf.hits[p].normal : undefined);
             bounceTints.set(sunGains, p * 3);
           } else lit[p] = live.level(i, px, py, pz);
         }
@@ -3082,6 +3091,7 @@ function renderFrame(world, o, preparedPalettes) {
           if (receivesDirect) base = directLight(p,point,n,base,undefined,0,i);
           if (!live?.normal(i) && probeReceiver(i)) base = probes.shade(point,shadeNormal(i,n),base,undefined,0,probeAlbedo(i));
         }
+        if (!live?.normal(i) && traced?.at(i)) base=traced.add(i,base,paintedAlbedo ?? probeAlbedo(i));
         const finishedSurface = surface?.has(i);
         const c = finishedSurface ? surface.shade(i, HX[p], HY[p], HZ[p], X[i], Y[i], Z[i], ...base, x + 0.5, y + 0.5,
           lookPass?.surface, fragmentReflection,undefined,stageBase,planarMatte) : base;

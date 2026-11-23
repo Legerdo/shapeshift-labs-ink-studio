@@ -881,6 +881,8 @@ The watershed and quarry examples run entirely from the CLI. The [puzzle recipes
 switches to a physical gate, inspect blockers and verify a solution. The [agent decision guide](docs/agent-decisions.md)
 covers reachable activity choices and confirmed arrivals.
 
+[Natively rendered hero shots](docs/hero-render.md) can use posed sculpt surfaces, traced indirect light and splat footprints fitted to approved views.
+
 ## Rendering and command reference
 
 Draw and revise exact indexed layers for sprites, projected paint and masks with the [native pixel-art authoring CLI](docs/pixel-art-authoring.md).

@@ -710,7 +710,22 @@ function sdfAssistOption() {
   if (value === undefined) return undefined;
   if (value === true || value === 'on') return true;
   if (value === 'off') return false;
+  if (value === 'posed') return {posed:true};
   return sdfAssistOverride ??= JSON.parse(fs.readFileSync(path.resolve(value), 'utf8'));
+}
+
+const renderAssetOverrides=new Map();
+function renderAssetOption(flag) {
+  const value=opt[flag];
+  if (value===undefined) return undefined;
+  if (value==='off') return false;
+  if (typeof value!=='string') die('--'+flag+' needs a JSON file or off');
+  const file=path.resolve(value);
+  if (!renderAssetOverrides.has(file)) {
+    shot?.dependency(file);
+    renderAssetOverrides.set(file,JSON.parse(fs.readFileSync(file,'utf8')));
+  }
+  return renderAssetOverrides.get(file);
 }
 
 let colorClustersOverride;
@@ -955,6 +970,8 @@ const view = extra =>
         { mode: opt['render-grid'], size: num('grid-size', 8), angle: num('grid-angle', 0),
           aspect: num('grid-aspect', 1), gap: num('grid-gap', 0), origin: list('grid-origin', [0, 0]) },
       sdfAssist: sdfAssistOption(),
+      tracedLighting: renderAssetOption('traced-lighting'),
+      splatFit: renderAssetOption('splat-fit'),
       stableTransparency: opt['stable-transparency'] === 'blend' ? { mode: 'blend' } : onOffOption('stable-transparency'),
       fragmentBudget: num('fragment-budget'),
       inspection: opt.inspection === 'off' ? false : opt.inspection === undefined ? undefined :
@@ -1302,6 +1319,8 @@ const CMD = {
         '  bounce-probes bake <scene> [--bounce-probes settings.json] --out probes.json',
         '  bounce-probes sample <scene> --at x,y,z --normal x,y,z [--bounce-probes probes.json]',
         '  bounce-probes review <scene> --out directory [--from 0 --to 3 --fps 12 --w 184 --h 112]',
+        '  traced-lighting <scene> --out asset.json [--plan settings.json --t 0 --samples 32 --bounces 2]',
+        '  splat-fit <scene> --plan approvals.json --out asset.json',
         '  sdf-reference <scene> --out directory [--t 0,1.2 --w 192 --h 120 --samples 32 --bounces 3]',
         '  pose-correctives capture <scene> --plan sculpt.json --t 1 --out correction.json',
         '  pose-correctives review <scene> --out directory [--from 0 --to 2.4 --fps 10]',
@@ -1685,7 +1704,7 @@ const CMD = {
         'art direction: --art-direction on|off|painted-pixel|storm-silhouette|soft-dawn|file.json',
         'shared rendering: --strict-contract [on|off] --step-animation [on|off]',
         'effect palette options: --effect-palettes on|off|file.json',
-        'art options: --palette-remap off --color-curves off --lut <file.cube|file.json|off> --color-stack <file.json|off> --ink on|off|file.json --ink-shot file.json --effects off --emissive-finishes off --stable on|off|file.json --stable-detail on|off|file.json --coverage-filter on|off|file.json --surface-history on|off|file.json --protected-pixels on|off|file.json --edge-filter on|off|file.json --contact-shadows on|off|file.json --area-lights on|off|file.json --bounce-probes on|off|file.json --snap on|off --dither-space screen|world|object|view --dither-spacing n --dither-origin x,y,z --resolve native|coverage|clusters --splat-order center|surface|selective --transparency-settings file.json --splat-coverage legacy|continuous|soft --splat-footprints on|off --palette-sampling off --semantic-mipmaps off --simulation-material-layers off --relief-lod auto|geometry|normal|painted|off --render-grid hex|triangle|diamond|off --grid-size 8 --grid-angle 0 --grid-aspect 1 --grid-gap 0 --grid-origin x,y --sdf-assist on|off|file.json --surface-decals off --stable-transparency on|off|blend --fragment-budget N --inspection file.json|off --inspection-focus id --composite file.json|off --cutaway file.json|off --render-graph file.json|off --shutter on|off|file.json --afterimages file.json|off --reconstruction file.json|off --volume-scale 2 --volume-steps 8 --volume-jitter off|blue-noise|spatiotemporal'
+        'art options: --palette-remap off --color-curves off --lut <file.cube|file.json|off> --color-stack <file.json|off> --ink on|off|file.json --ink-shot file.json --effects off --emissive-finishes off --stable on|off|file.json --stable-detail on|off|file.json --coverage-filter on|off|file.json --surface-history on|off|file.json --protected-pixels on|off|file.json --edge-filter on|off|file.json --contact-shadows on|off|file.json --area-lights on|off|file.json --bounce-probes on|off|file.json --snap on|off --dither-space screen|world|object|view --dither-spacing n --dither-origin x,y,z --resolve native|coverage|clusters --splat-order center|surface|selective --transparency-settings file.json --splat-coverage legacy|continuous|soft --splat-footprints on|off --palette-sampling off --semantic-mipmaps off --simulation-material-layers off --relief-lod auto|geometry|normal|painted|off --render-grid hex|triangle|diamond|off --grid-size 8 --grid-angle 0 --grid-aspect 1 --grid-gap 0 --grid-origin x,y --sdf-assist on|posed|off|file.json --traced-lighting file.json|off --splat-fit file.json|off --surface-decals off --stable-transparency on|off|blend --fragment-budget N --inspection file.json|off --inspection-focus id --composite file.json|off --cutaway file.json|off --render-graph file.json|off --shutter on|off|file.json --afterimages file.json|off --reconstruction file.json|off --volume-scale 2 --volume-steps 8 --volume-jitter off|blue-noise|spatiotemporal'
       ].join('\n')
     );
   },
@@ -2142,6 +2161,43 @@ const CMD = {
     fs.mkdirSync(path.dirname(file),{recursive:true});
     fs.writeFileSync(file,JSON.stringify(data,null,2)+'\n');
     console.log('baked',data.probes.length,'bounce probes to',file);
+  },
+  'traced-lighting'() {
+    if (pos.length!==1 || typeof opt.out!=='string' || opt.plan!==undefined && typeof opt.plan!=='string')
+      die('Use traced-lighting <scene> --out asset.json [--plan settings.json --t 0]');
+    const file=outputFile('traced-lighting.json'), plan=opt.plan && path.resolve(opt.plan);
+    if (file===path.resolve(pos[0]) || file===plan) die('Write traced lighting separately from its inputs');
+    const {bake}=require('./traced-lighting.js'), settings=plan ? JSON.parse(fs.readFileSync(plan,'utf8')) : {};
+    const t=num('t',0);
+    if (!Number.isFinite(t) || t<0 || t>3600) die('Traced lighting needs a valid scene time');
+    const world=buildPreview(pos[0],{retainReferenceSdf:true});
+    pose(world,t);
+    const options=view({ w:96,h:64,t,px:1,renderGraph:false,renderGrid:false,inspection:false,
+      composite:false,tracedLighting:false,splatFit:false,sdfAssist:false });
+    let camera;
+    R.render(world,{...options,...R.cameraCapture(options,value=>{camera=value;})});
+    const asset=bake(world,options,camera,{...settings,samples:num('samples',settings.samples),
+      bounces:num('bounces',settings.bounces),spacing:num('spacing',settings.spacing)});
+    require('./asset-files.js').json(file,asset);
+    console.log('Baked',asset.stats.litSites,'traced lighting sites to',file);
+  },
+  'splat-fit'() {
+    if (pos.length!==1 || typeof opt.out!=='string' || typeof opt.plan!=='string')
+      die('Use splat-fit <scene> --plan approvals.json --out asset.json');
+    const file=outputFile('splat-fit.json'), plan=path.resolve(opt.plan);
+    if (file===path.resolve(pos[0]) || file===plan) die('Write splat fit separately from its inputs');
+    const {views,...settings}=JSON.parse(fs.readFileSync(plan,'utf8'));
+    if (!Array.isArray(views) || !views.length) die('Splat fit needs approval views');
+    const load=image=>{
+      if (typeof image!=='string') throw new TypeError('Splat fit reference must name a PNG');
+      const input=path.resolve(path.dirname(plan),image);
+      if (input===file) die('Write splat fit separately from its reference images');
+      return require('./png.js').raster(input);
+    };
+    const asset=require('./splat-fit.js').fit(buildPreview(pos[0],{retainSdf:true}),{...settings,pose,view,
+      views:views.map(entry=>({...entry,reference:load(entry.reference),mask:entry.mask && load(entry.mask)}))});
+    require('./asset-files.js').json(file,asset);
+    console.log('Fitted',asset.report.resized,'splats and omitted',asset.report.omitted,'splats. Wrote',file);
   },
   'sdf-reference'() {
     if (pos.length !== 1 || typeof opt.out !== 'string' ||

@@ -53,26 +53,10 @@ function frameLights(world, options, camera) {
     sunTint: lighting.celestial?.sun?.color ? linear(lighting.celestial.sun.color) : clear };
 }
 
-function trace(world, options, camera, settings) {
-  const { samples, bounces, epsilon, steps, seed, exposure } = settings;
-  const { intersect, rows, stats, bias, support } = bind(world,epsilon,steps);
-  const { sun, areas, local, environment, sky, background, sunTint } = frameLights(world,options,camera);
-  const { width:w, height:h, view, eye, ortho, tangent, clipNear, clipFar } = camera;
-  const rayAt = CameraLens.rays(view,eye,w,h,h*.5/tangent,ortho);
-  const skyRay = ortho && sky && CameraLens.rays(view,eye,w,h,h*.5/Math.tan(sky.orthoFov*.5),false);
-  const rgb = new Uint8Array(w*h*3), indirect = new Uint8Array(rgb.length), transmission = new Uint8Array(rgb.length);
-  const depth = new Float32Array(w*h).fill(Infinity), normals = new Float32Array(rgb.length);
-  const coverage = new Float32Array(w*h), sampling = new Float32Array(w*h), spacing = new Float32Array(w*h);
-  const even = new Float64Array(3), odd = new Float64Array(3), sumIndirect = new Float64Array(3), sumThrough = new Float64Array(3);
-  const transport = { indirectPixels: 0, transmissionPixels: 0 };
-  const film = (n,c) => display(n.map(v => clamp(v*exposure))).map(v => v * c);
-  const half = samples/2, shuffle = random(seed ^ 0x62c8f57d);
-  // Each half independently jitters across the same 2D Latin hypercube.
-  const strata = Array.from({length:half},(_,i)=>i);
-  for (let i=half-1;i>0;i--) {
-    const j = Math.floor(shuffle()*(i+1));
-    [strata[i],strata[j]] = [strata[j],strata[i]];
-  }
+function transportFor(world, options, camera, {bounces,epsilon,steps,posed}) {
+  const geometry = bind(world,epsilon,steps,posed);
+  const {intersect,bias} = geometry;
+  const {sun,areas,local,environment,sky,background,sunTint} = frameLights(world,options,camera);
 
   function attenuate(weight, media, distance) {
     let extinction = 0;
@@ -143,22 +127,21 @@ function trace(world, options, camera, settings) {
     }
   }
 
-  function path(ray, sx, sy, rng, output) {
+  function path(ray, rng, output, {clipNear=0,clipFar=far,primary=background,indirect,transmission,secondary=false}={}) {
     let origin = ray.origin, direction = ray.direction, diffuse = 0, transmitted = false;
     const throughput = [1,1,1], media = new Map();
-    function add(light, indirect, through = transmitted) {
+    function add(light, bounced, through = transmitted) {
       for (let c=0;c<3;c++) {
         const amount = throughput[c]*light[c];
         output[c] += amount;
-        if (indirect) sumIndirect[c] += amount;
-        if (through) sumThrough[c] += amount;
+        if (bounced && indirect) indirect[c] += amount;
+        if (through && transmission) transmission[c] += amount;
       }
     }
     for (let i=0;i<transportLimit;i++) {
       const hit = intersect(origin,direction,i ? 0 : clipNear/ray.axial,i ? far : clipFar/ray.axial);
       if (!hit) {
-        const light = i ? environment(direction) : sky ? environment(skyRay?.(sx,sy).direction ?? direction) : background;
-        add(light,diffuse>1);
+        if (i || !secondary) add(i ? environment(direction) : primary,diffuse>1);
         return i > 0;
       }
       const { profile, front } = hit, normal = front ? hit.normal : hit.normal.map(n=>-n);
@@ -185,7 +168,7 @@ function trace(world, options, camera, settings) {
           transmitted = true;
         }
       } else {
-        if (diffuse > bounces) break;
+        if (diffuse > bounces - Number(secondary)) break;
         direct(hit,normal,rng,media,(light,through) => add(light,diffuse>0,transmitted || through));
         const through = thin && rng() < thin.strength*Math.exp(-thin.thickness);
         multiply(throughput,through ? thin.rgb : albedo);
@@ -204,6 +187,38 @@ function trace(world, options, camera, settings) {
     return true;
   }
 
+  function irradiance(point, normal, samples, seed) {
+    const sum=[0,0,0], origin=along(point,normal,bias);
+    for (let i=0;i<samples;i++) {
+      const rng=random(seed ^ Math.imul(i+1,0x85ebca77));
+      const direction=hemisphere(normal,rng);
+      path({origin,direction,axial:1},rng,sum,{secondary:true});
+    }
+    return sum.map(n=>n/samples);
+  }
+  return {...geometry,path,irradiance,environment,sky,background};
+}
+
+function trace(world, options, camera, settings) {
+  const { samples, seed, exposure } = settings;
+  const { intersect, rows, stats, support, environment, sky, background, path } = transportFor(world,options,camera,settings);
+  const { width:w, height:h, view, eye, ortho, tangent, clipNear, clipFar } = camera;
+  const rayAt = CameraLens.rays(view,eye,w,h,h*.5/tangent,ortho);
+  const skyRay = ortho && sky && CameraLens.rays(view,eye,w,h,h*.5/Math.tan(sky.orthoFov*.5),false);
+  const rgb = new Uint8Array(w*h*3), indirect = new Uint8Array(rgb.length), transmission = new Uint8Array(rgb.length);
+  const depth = new Float32Array(w*h).fill(Infinity), normals = new Float32Array(rgb.length);
+  const coverage = new Float32Array(w*h), sampling = new Float32Array(w*h), spacing = new Float32Array(w*h);
+  const even = new Float64Array(3), odd = new Float64Array(3), sumIndirect = new Float64Array(3), sumThrough = new Float64Array(3);
+  const transport = { indirectPixels: 0, transmissionPixels: 0 };
+  const film = (n,c) => display(n.map(v => clamp(v*exposure))).map(v => v * c);
+  const half = samples/2, shuffle = random(seed ^ 0x62c8f57d);
+  // Each half independently jitters across the same 2D Latin hypercube.
+  const strata = Array.from({length:half},(_,i)=>i);
+  for (let i=half-1;i>0;i--) {
+    const j = Math.floor(shuffle()*(i+1));
+    [strata[i],strata[j]] = [strata[j],strata[i]];
+  }
+
   for (let y=0,p=0;y<h;y++) for (let x=0;x<w;x++,p++) {
     const ry = h-y-1, j = p*3;
     const center = rayAt(x+.5,ry+.5);
@@ -218,7 +233,9 @@ function trace(world, options, camera, settings) {
     for (let s=0;s<samples;s++) {
       const rng = random(Math.imul(p+1,0x9e3779b1) ^ Math.imul(s+1,0x85ebca77) ^ seed);
       const cell = s>>1, sx = x+(cell+rng())/half, sy = ry+(strata[cell]+rng())/half;
-      if (path(rayAt(sx,sy),sx,sy,rng,s&1 ? odd : even)) hits++;
+      const ray=rayAt(sx,sy);
+      const primary=sky ? environment(skyRay?.(sx,sy).direction ?? ray.direction) : background;
+      if (path(ray,rng,s&1 ? odd : even,{clipNear,clipFar,primary,indirect:sumIndirect,transmission:sumThrough})) hits++;
     }
     coverage[p] = hits/samples;
     const mean = Array.from(even,(n,c)=>(n+odd[c])/samples);
@@ -235,4 +252,4 @@ function trace(world, options, camera, settings) {
   return { w,h,rgb,indirect,transmission,coverage,depth,normals,sampling,spacing,rows,stats: { ...stats, ...transport } };
 }
 
-module.exports = { trace };
+module.exports = { trace,transportFor };
