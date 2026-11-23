@@ -415,6 +415,8 @@ Choose which sources use physical arrival time and Doppler, with independent con
 
 Synthesize breakaway, slip, and catch pulses from runtime contact load and friction. [Stick-slip contact synthesis](docs/stick-slip-audio.md)
 
+Share vibration between modal bodies through a sample-rate contact, then let each body ring as the contact opens. [Coupled resonance](docs/coupled-resonance.md)
+
 Keep distant crowds and debris audible when the mix runs out of individual voices. [Crowd and debris sound aggregation](docs/crowd-audio-aggregation.md)
 
 <!-- include: examples/puppet.js -->
