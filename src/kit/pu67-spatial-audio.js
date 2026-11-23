@@ -105,10 +105,12 @@
       return [name,row];
     }));
     const S=W.spatialSoundSelection, selection=S.compile(config.soundFamilies??{},config.soundSeed??0,cues);
-    const contactPlayback=config.contactLoops===undefined?null:W.spatialContactAudio.compile(config.contactLoops,cues,(query,row)=>{
+    const contactPlayback=config.contactLoops===undefined?null:W.spatialContactAudio.compile(config.contactLoops,cues,(query,row,slip)=>{
       const at=eventAt(row);
-      return {at,material:row.material??row.surface?.id??surfaceAt(query,at)?.id};
-    });
+      const sampled=slip||row.material==null&&row.surface?.id==null?surfaceAt(query,at):undefined;
+      return {at,material:row.material??row.surface?.id??sampled?.id,friction:sampled?.friction};
+    },config.soundSeed??0);
+    const pulseCue={gain:1,pitch:1,distance,occlusion:true,bus:'foley'};
     const createPlayback=()=>Object.assign(S.createPlayback(),{contactFrame:contactPlayback?.()});
     const livePlayback=createPlayback();
     const moving=emitters.some(row=>row.propagation)||[...cues.values()].some(row=>row.propagation);
@@ -157,12 +159,12 @@
     }
 
     function mix(query,listener,input,motion,time){
-      const sample=cues.get(input.cue), cue=input.routingCue===undefined?sample:cues.get(input.routingCue);
+      const sample=input.stickSlip?pulseCue:cues.get(input.cue), cue=input.routingCue===undefined?sample:cues.get(input.routingCue);
       if(!sample||!cue)return null;
       const propagation=input.mode!=='clip'&&!input.contact&&(input.propagation??cue.propagation);
       const at=input.at??cue.at, positioned=at!==undefined, source=resolve(query,at,Boolean(propagation));
       const variation=input.selection?.variation, detune=variation?2**(variation.pitchCents/1200):1;
-      const pitch=variation?.rate??Math.max(.001,Math.min(64,(input.pitch??1)*sample.pitch*detune));
+      const pitch=variation?.rate??Math.max(.001,Math.min(64,(input.pitch??1)*(input.stickSlip?1:sample.pitch)*detune));
       const entity=at?.entity??input.entity;
       const radiationName=input.radiation??cue.radiation, radiation=radiationProfiles.get(radiationName);
       let processing=processor?.resolve(processor.has(input.audioProfile)?input.audioProfile:cue.audioProfile,
@@ -175,13 +177,14 @@
       }
       const colorGain=processing?amplitude(-processing.gainDb):1;
       const sound=input.sound, sourceGain=sound?amplitude(soundReferenceDb-sound.sourceLevelDb):1;
-      const scale=Math.min(16384,(input.gain??1)*sample.gain*colorGain*sourceGain*amplitude(-(edit?.gainDb??0)));
-      const bus=input.bus??cue.bus??(input.impact?'effects':undefined);
+      const scale=Math.min(16384,(input.gain??1)*(input.stickSlip?1:sample.gain)*colorGain*sourceGain*amplitude(-(edit?.gainDb??0)));
+      const bus=input.bus??cue.bus??(input.stickSlip?'foley':input.impact?'effects':undefined);
       const allocation=voiceBudget||cue.priority!==undefined||cue.protected!==undefined||cue.group!==undefined?{
         priority:cue.priority??0,protected:cue.protected??Boolean(voiceBudget&&bus==='dialogue'),
         ...(cue.group!==undefined&&{group:cue.group})
       }:undefined;
-      const result={id:input.id,cue:input.cue,asset:sample.asset,mode:input.mode,offset:input.offset??0,
+      const result={id:input.id,cue:input.cue,asset:input.stickSlip?'procedural/stick-slip':sample.asset,mode:input.mode,offset:input.offset??0,
+        ...(input.stickSlip&&{stickSlip:input.stickSlip}),
         rate:pitch,...(input.duration!==undefined&&{duration:input.duration}),...(bus!==undefined&&{bus}),
         ...(processing&&{processing}),...(sound&&{sound}),
         ...allocation,...(edit&&{audition:{binding:edit.binding}}),
@@ -189,7 +192,7 @@
         ...(input.sourceEvent!==undefined&&{sourceEvent:input.sourceEvent}),
         ...((input.sourceEvent!==undefined||input.captureSource)&&positioned&&{sourceAt:at}),
         ...(input.selection!==undefined&&{selection:variation?{...input.selection,variation:{...variation,rate:pitch}}:input.selection}),
-        ...(cue.follow&&input.mode==='cue'&&at?.entity&&{attachment:{cue:input.cue,at,
+        ...(!input.stickSlip&&cue.follow&&input.mode==='cue'&&at?.entity&&{attachment:{cue:input.cue,at,
           ...(input.gain!==undefined&&{gain:input.gain}),...(input.pitch!==undefined&&{pitch:input.pitch}),
           ...(input.exclude!==undefined&&{exclude:input.exclude}),
           ...(input.object!==undefined&&{object:input.object}),
@@ -406,7 +409,10 @@
       }
       for(const row of emitters)add({...row,id:'emitter:'+row.name,mode:'loop',offset:(row.offset??0)+time*cues.get(row.cue).pitch},active);
       const sustained=playback.contactFrame?.(time,query,events,contacts);
-      if(sustained)for(const voice of sustained.active)add(voice,active);
+      if(sustained){
+        for(const voice of sustained.active)add(voice,active);
+        for(const voice of sustained.pulses??[])add(voice,shots);
+      }
       events.forEach((row,i)=>{
         if(record(row)&&id(row.kind))route(row,'world:'+JSON.stringify(row.id??[time,i]));
       });

@@ -3,8 +3,10 @@ import {createRoomResponse,validateRoomResponse} from './spatial-room-response.m
 import {prepareBinaural} from './spatial-binaural.mjs';
 import * as sharedBudget from '../world-voice-budget.js';
 import * as sharedRadiation from '../spatial-radiation.js';
+import * as sharedPulse from '../contact-pulse.js';
 const voiceBudget=sharedBudget.default??globalThis[Symbol.for('ink-studio.world-voice-budget')];
 const radiation=sharedRadiation.default??globalThis[Symbol.for('ink-studio.spatial-radiation')];
+const contactPulse=sharedPulse.default??globalThis[Symbol.for('ink-studio.contact-pulse')];
 const clamp=(value,min,max)=>Math.min(max,Math.max(min,value));
 const finite=(value,min,max)=>Number.isFinite(value)&&value>=min&&value<=max;
 const buses=['dialogue','foley','effects','ambience','music'];
@@ -26,7 +28,7 @@ export function createSpatialAudioPlayer(context, {
   const outputs=new Map(Object.entries(destinations)), output=voice=>outputs.get(voice.bus)??destination;
   const voices=new Map(), seen=new Set(), assets=new Map(), retiring=new Set(), tails=new Set();
   const room=createRoomResponse(context,outputs.get('effects')??destination,asset);
-  const monoAssets=new WeakMap();
+  const monoAssets=new WeakMap(), pulseAssets=new Map();
   const fallback=voiceBudget.compile({maxVoices:maxVoices??32,reservedVoices:0});
   let disposed=false, previousTime=-Infinity, policy=fallback, configured=false, listener, profile, profileKey, binaural;
   let inspection=Object.freeze({selected:[],rejected:[]});
@@ -45,6 +47,20 @@ export function createSpatialAudioPlayer(context, {
       if(assets.size>512)assets.delete(assets.keys().next().value);
     }
     return assets.get(id);
+  }
+  function sourceAsset(voice){
+    if(!voice.stickSlip)return asset(voice.asset);
+    return Promise.resolve().then(()=>{
+      const key=contactPulse.key(voice.stickSlip);
+      if(!pulseAssets.has(key)){
+        const {samples,sampleRate}=contactPulse.render(voice.stickSlip,context.sampleRate);
+        const buffer=context.createBuffer(1,samples.length,sampleRate);
+        buffer.getChannelData(0).set(samples);
+        pulseAssets.set(key,buffer);
+        if(pulseAssets.size>128)pulseAssets.delete(pulseAssets.keys().next().value);
+      }
+      return pulseAssets.get(key);
+    });
   }
   function parameter(param,value,time,immediate=false){
     param.cancelScheduledValues(time);
@@ -224,11 +240,13 @@ export function createSpatialAudioPlayer(context, {
   }
 
   function start(voice,at,positionedReady,frameTime){
-    const late=voice.propagation&&voice.onset!==undefined?Math.max(0,frameTime-voice.onset):0;
-    const row={voice,when:at+voice.delay+(voice.startDelay??0)-late,branches:[]};
+    const late=(voice.propagation||voice.stickSlip)&&voice.onset!==undefined?Math.max(0,frameTime-voice.onset):0;
+    const when=at+voice.delay+(voice.startDelay??0)+(voice.stickSlip?contactPulse.monitorDelay:0)-late;
+    const row={voice,when:voice.stickSlip?Math.max(at,when):when,branches:[]};
     voices.set(voice.id,row);
-    row.pending=(positionedReady&&voice.position ? Promise.all([asset(voice.asset),positionedReady]).then(([buffer])=>buffer) :
-      asset(voice.asset)).then(buffer=>{
+    const sound=sourceAsset(voice);
+    row.pending=(positionedReady&&voice.position ? Promise.all([sound,positionedReady]).then(([buffer])=>buffer) :
+      sound).then(buffer=>{
       if(disposed||voices.get(voice.id)!==row)return;
       const live=row.voice;
       row.direct=branch(live,buffer,row.when);
@@ -308,6 +326,7 @@ export function createSpatialAudioPlayer(context, {
         (row.processing!==undefined&&!validProcessing(row.processing))||
         (row.radiation!==undefined&&(!row.position||!validRadiation(row.radiation)))||
         (row.propagation!==undefined&&!validPropagation(row))||
+        (row.stickSlip!==undefined&&(row.mode!=='cue'||!contactPulse.valid(row.stickSlip)||!finite(row.onset,0,frame.time)))||
         (row.reflections!==undefined&&(row.mode!=='cue'||!row.position||!Array.isArray(row.reflections)||
           row.reflections.length>8||!Array.from(row.reflections).every(tap=>
             tap&&finite(tap.gain,0,16384)&&finite(tap.cutoff,20,22000)&&finite(tap.delay,.0001,.25)&&position(tap.apparentSource)&&
@@ -398,6 +417,6 @@ export function createSpatialAudioPlayer(context, {
     },
     reset,
     inspectVoices:()=>inspection,
-    dispose(){if(!disposed){disposed=true;reset();binaural=profile=profileKey=undefined;assets.clear();}}
+    dispose(){if(!disposed){disposed=true;reset();binaural=profile=profileKey=undefined;assets.clear();pulseAssets.clear();}}
   });
 }

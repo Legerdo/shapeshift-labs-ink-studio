@@ -317,6 +317,8 @@ the `foley` bus by default when soundtrack post is enabled. Its report
 includes the contact ID, source cue, and sample range for each material
 loop. [Run the continuous contact demo](../examples/continuous-contact-sounds/demo.cjs)
 
+Enable [stick-slip synthesis](stick-slip-audio.md) to generate breakaway, sliding, and catch pulses from these contact readings.
+
 ## Layer compound impacts
 
 Use `impactLayers` inside a cue binding to split an impact into a

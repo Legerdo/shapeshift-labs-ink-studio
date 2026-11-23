@@ -193,5 +193,5 @@
     const length=K.V.len(row.normal);
     if(Number.isFinite(length)&&length>0)return Math.abs(K.V.dot(row.force,K.V.mul(row.normal,1/length)));
   }
-  W.spatialSoundSelection=Object.freeze({compile,readContact,createPlayback});
+  W.spatialSoundSelection=Object.freeze({compile,readContact,createPlayback,normalLoad});
 })(KIT);

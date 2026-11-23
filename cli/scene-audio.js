@@ -4,6 +4,7 @@ const path = require('node:path');
 const {createHash} = require('node:crypto');
 const Binaural = require('../src/binaural-profile.js');
 const Radiation = require('../src/spatial-radiation.js');
+const ContactPulse = require('../src/contact-pulse.js');
 const WAV = require('./wav.js');
 const { readAudioSource, isSoundRecipe, decodeSoundRecipe } = require('./sound-source.js');
 const { mix } = require('./scene-audio-mix.js');
@@ -104,7 +105,7 @@ function createSceneAudio(definition, { kit = require('../index.js').load(), res
     const playback = mixer?.createPlayback();
     const voices = bed.map(voice => ({ ...voice }));
     const cues = timeline?.audioSchedule(clock) ?? [];
-    const looping = new Map(), contactTracks = new Map(), resolved = new Map(), positional = [], following = [];
+    const looping = new Map(), contactTracks = new Map(), resolved = new Map(), pulseAssets = new Map(), positional = [], following = [];
     const history = trace && { sections: [], cues: [], layers: [] };
     const includeRoom=postSelected || selection?.kind!=='stem' || ['mix','spatial'].includes(selection.name);
     const binaural=binauralPlan&&{...binauralPlan,path:[]};
@@ -125,6 +126,15 @@ function createSceneAudio(definition, { kit = require('../index.js').load(), res
         resolved.set(name, K.procedural.mediaGraph.audio(asset));
       }
       return resolved.get(name);
+    }
+    function pulseAsset(pulse) {
+      const key=ContactPulse.key(pulse);
+      if(!pulseAssets.has(key)){
+        const id=Symbol('stick-slip');
+        resolved.set(id,ContactPulse.render(pulse,sampleRate));
+        pulseAssets.set(key,id);
+      }
+      return pulseAssets.get(key);
     }
     function push(row) {
       if (voices.length >= 16384) throw new RangeError('Scene soundtrack exceeds its voice budget');
@@ -211,7 +221,12 @@ function createSceneAudio(definition, { kit = require('../index.js').load(), res
           reason:['out-of-range','unavailable','blocked'].includes(voice.status) ? voice.status : 'zero-gain'});
         return;
       }
-      const row={stem,bus:voice.bus,asset:voice.asset,cue:voice.cue,first:time,offset:voice.offset,rate:voice.rate};
+      const row={stem,bus:voice.bus,asset:voice.stickSlip?pulseAsset(voice.stickSlip):voice.asset,
+        cue:voice.cue,first:time,offset:voice.offset,rate:voice.rate};
+      if (voice.stickSlip) {
+        row.stickSlip={...voice.stickSlip,onsetSample:sample};
+        row.end=time+Math.ceil(resolve(row.asset).samples.length/row.rate);
+      }
       if (voice.sound && time<cueLimit) {
         const audio = resolve(voice.asset);
         const natural = Math.max(0, (audio.samples.length/audio.channels/audio.sampleRate-voice.offset)/voice.rate);
@@ -521,6 +536,9 @@ function createSceneAudio(definition, { kit = require('../index.js').load(), res
         .map(row=>({...row.contact,cue:row.cue,asset:row.asset,bus:row.bus,stem:row.stem,
           fromSample:Math.max(row.first,start),toSample:Math.min(row.end??end,end)}));
       if (contacts.length) history.contacts=contacts;
+      const pulses=active.filter(row=>row.stickSlip&&row.end>start).map(row=>({
+        ...row.stickSlip,arrivalSample:row.first,endSample:row.end,bus:row.bus,gain:row.points[0].gain}));
+      if (pulses.length) history.stickSlip=pulses;
       if (roomPath) history.roomResponse={...mixer.roomResponse,path:roomPath};
       history.playbackReceipts=playbackReceipts.finish(resolve,gain);
       result.report.storyAudio=history;
