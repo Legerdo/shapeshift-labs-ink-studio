@@ -58,7 +58,7 @@
         clamp((.48*rate/upper-params.ratio)/Math.max(1,params.ratio));
       const gain=Math.pow(note.velocity,.78), salt=note.salt;
       const spread=2**(params.width/1200)-1;
-      return {duration:gate+e.release,signal(t,frame){
+      return {duration:gate+e.release,extendGate(next){gate=next;return gate+e.release;},signal(t,frame){
         const turn=phase(note,t), transient=Math.exp(-t/params.indexDecay);
         const fm=sin(turn+sin(turn*params.ratio)*index*(.13+.87*transient)/tau);
         const harmonics=sin(2*turn+.07)*.53*clamp((.5-2*upper/rate)*12)+
@@ -86,7 +86,7 @@
       const partial=(ratio,gain)=>gain*clamp((.5-note.frequency*(note.expression?.pitchMax ?? 1)*ratio/rate)*12);
       const second=partial(1.999,.20*p.tine), third=partial(3.998,.38*p.bite*brightness);
       const strike=partial(6.84,.26*p.bite*brightness);
-      return {duration:gate+e.release,signal(t,frame) {
+      return {duration:gate+e.release,extendGate(next){gate=next;return gate+e.release;},signal(t,frame) {
         const turn=phase(note,t)+p.wear*.042*(1-Math.cos(tau*.84*t));
         const body=.8*sin(turn)+second*sin(turn*1.999+.063)*Math.exp(-t*3.4);
         const hammer=strike*sin(turn*6.84)*Math.exp(-t*35)+third*sin(turn*3.998)*Math.exp(-t*10);
@@ -177,7 +177,12 @@
         const current=samples[at*channels+ch], next=samples[(at+1)*channels+ch] ?? 0;
         return current+(next-current)*blend;
       };
-      return {duration,asset:zone.samples[alternate],stereo:channels===2,signal(t,frame,channel) {
+      return {duration,asset:zone.samples[alternate],stereo:channels===2,
+        ...(!zone.oneShot && {extendGate(next){
+          if (!zone.loop && next>span) return null;
+          gate=next;
+          return zone.loop ? gate+e.release : Math.min(span,gate+e.release);
+        }}),signal(t,frame,channel) {
         let pos=offset+(travel?.(t) ?? t)*ratio*sampleRate;
         if (zone.loop && pos>=end)
           pos=fade ? start+fade+(pos-end)%(end-start-fade) : start+(pos-start)%(end-start);

@@ -1,7 +1,7 @@
 /* A causal adaptive score on the output sample clock. */
 (function (K) {
-  const P=K.procedural, A=P.musicProduction, F=P.musicPhraseRoutes;
-  const {check,fields,record,finite,integer,id,clamp,db}=P.musicInstruments;
+  const P=K.procedural, A=P.musicProduction, F=P.musicPhraseRoutes, B=P.musicHarmonicBridge;
+  const {check,fields,record,finite,integer,id,clamp,db,hash}=P.musicInstruments;
   const {layerFactors:validLayerFactors,mergeLayerFactors}=P.adaptiveRehearsalTrace;
   const onset=F.onset, eps=1e-8, gainAtFrame=P.musicLayerGain.at;
   const ordered=(a,b)=>a.frame-b.frame || a.intent.time-b.intent.time ||
@@ -28,6 +28,7 @@
     const stemGroups=streams.stemGroups(options.stemGroups);
     const {compiled,segments,known,memory,routes,phrasing,stingers,holds,rules}=
       P.musicTimeline.prepare(sources,spec,assets,undefined,new Map(),streams.streams);
+    const hasBridges=[...rules.values()].some(edge=>edge.harmonicBridge);
     const musicNames=[...new Set([...Object.values(segments).map(row=>row.source),
       ...Object.values(spec.thematic?.routes ?? {}).flat().map(row=>row.source),
       ...Object.values(spec.phrasing?.routes ?? {}).flat().map(row=>row.source)])];
@@ -61,7 +62,7 @@
     }
     const time=()=>frame/rate, snap=seconds=>Math.round(seconds*rate), inputFrame=seconds=>snap(seconds-startTime);
     const fg=new Set(foreground), scale=db(masterGain), edgeFade=Math.max(2,Math.round(rate*.008));
-    const desk=new Map(), echoes=new Map(), indexes=new Map(), recentNotes=new Map();
+    const desk=new Map(), echoes=new Map(), indexes=new Map(), recentNotes=new Map(), patchKeys=new Map();
     const intents=[], accents=[], voices=[], waiting=[], trace=[], joins=[], via=[], outcomes=new Map();
     const pair=[0,0], mixed=[0,0,0,0];
     const profile={transitions:0,cancellations:0,lateEvents:0,lateFrames:0,scheduled:0,
@@ -118,17 +119,18 @@
     }
     for (const [source,score] of Object.entries(compiled)) {
       const parts=Object.entries(score.tracks);
+      if (hasBridges) patchKeys.set(source,new Map(parts.map(([part,track])=>[part,F.signature(sources[source].patches[track.patch])])));
       const rows=parts.flatMap(([part,track],rank)=>{
         check(!track.external,'Live adaptive playback needs a native instrument on '+source+'/'+part);
         return score.events[part].map(note=>({part,track,note,at:onset(note),rank}));
       }).sort((a,b)=>a.at-b.at || a.rank-b.rank);
       indexes.set(source,rows);
     }
-    function choose(section,reason) {
+    function choose(section,reason,path=via,rule=incomingRule) {
       const choices=routes.get(section), state=memory?.at(time());
       const match=choices?.find(({when})=>state[when.theme].counts[when.stage]>=(when.min ?? 1));
       const source=match?.source ?? segments[section].source;
-      const selected=phrasing.choose(section,time(),source,via,incomingRule,reason);
+      const selected=phrasing.choose(section,time(),source,path,rule,reason);
       return {...selected,themeMatch:match?.when ?? null};
     }
     const frameAt=(phase,position)=>phase.frame+snap(position-phase.position);
@@ -138,9 +140,9 @@
       play:(resource,intent)=>playCue(resource,intent,true)
     });
     const foleyRoom=scoring?.hasSpace ? A.makeSessionRoom(roomSpec,rate) : null;
-    function begin(section,position,layers={},fadeIn=0,kind='segment',reason='entry',phase={frame,position}) {
+    function begin(section,position,layers={},fadeIn=0,kind='segment',reason='entry',phase={frame,position},selected) {
       const segment=segments[section];
-      const selection=kind==='segment' ? choose(section,reason) : {source:segment.source,phrase:null};
+      const selection=selected ?? (kind==='segment' ? choose(section,reason) : {source:segment.source,phrase:null});
       const notes=indexes.get(selection.source);
       let low=0,high=notes.length;
       while (low<high) {
@@ -162,15 +164,17 @@
       voice.fadeEnd=end;
       voice.last=Math.min(voice.last,end);
     }
+    function releaseDeparting(clip,tail) {
+      const end=frame+(tail ? snap(tail) : edgeFade);
+      for (const voice of voices) if ((voice.owner ?? voice.clip)===clip && !voice.persistent) retire(voice,end);
+    }
     function finish(clip,tail=0,keepVoices=false) {
       if (clip.finished) return;
       clip.finished=true;
       if (clip.kind==='segment' && clip.spoke && clip.position<=clip.segment.start+eps && frame>=clip.stop)
         phrasing.heardPhrase(clip.phrase,clip.section,clip.source,time());
       memory?.finish(clip.id,time());
-      if (keepVoices) return;
-      const end=frame+(tail ? snap(tail) : edgeFade);
-      for (const voice of voices) if (voice.clip===clip && !voice.persistent) retire(voice,end);
+      if (!keepVoices) releaseDeparting(clip,tail);
     }
     function fadeAt(voice,at) {
       return voice.fadeEnd===Infinity ? 1 : voice.fadeGain*clamp((voice.fadeEnd-at)/(voice.fadeEnd-voice.fadeFirst));
@@ -196,8 +200,8 @@
       }
       return row;
     }
-    function creditNote(voice,from,gain,velocity){
-      const {clip,part,lane,pitch}=voice;
+    function creditNote(voice,from,gain,velocity,clip=voice.clip){
+      const {part,lane,pitch}=voice;
       if (!clip.finished) {
         if (!clip.listen || clip.listen.includes(part)) clip.spoke=true;
         memory?.add({source:clip.source,segment:clip.section,instance:clip.id,at:time(),from,
@@ -215,6 +219,7 @@
       if (cut?.startTime<=at+eps) return null;
       const row={...note,time:shift(note.time)};
       if (note.start!==undefined) row.start=time();
+      if (note.clipEnd!==undefined) row.clipEnd=shift(note.clipEnd);
       const choke=Math.min(note.choke ?? Infinity,cut?.startTime ?? Infinity);
       if (choke<Infinity) row.choke=shift(choke);
       const shortened=local?.tail?.map(row=>({...row,startTime:shift(row.startTime),endTime:shift(row.endTime)}));
@@ -225,7 +230,9 @@
       const lane=layerFor(clip,part);
       const persistent=carries.has(part) && clip.kind==='segment';
       const voice={...tone,part,clip,lane,persistent,off:snap(row.time+row.gate),pitch:note.midi,
+        ...(hasBridges && {frequency:note.frequency*2**((note.play.bend ?? 0)/1200),articulation:note.play.articulation}),
         choke:track.mix.choke ? (persistent ? 'live/' : clip.source+'/')+track.mix.choke : null};
+      if (clip.kind==='harmonic-bridge') return voice;
       if (clip.kind==='segment' && layerGain(part)===0)
         voice.unheard={from:note.time,gain:row.renderGain,velocity:note.velocity};
       else creditNote(voice,note.time,row.renderGain,note.velocity);
@@ -293,7 +300,16 @@
         const event=clip.notes[clip.next];
         if (event.at>=clip.segment.end-eps || frameAt(clip.phase,event.at)>frame) break;
         if (!event.note.velocity || !event.track.mix.gain || clip.layers[event.part]===0) continue;
-        admit({clip,event,foreground:fg.has(event.part),priority:priorities[event.part] ?? 0});
+        if (clip.tied?.has(event)) {
+          const held=clip.tied.get(event);
+          if (held.last>frame && !held.replacement && held.fadeEnd===Infinity) {
+            if (layerGain(event.part)>0) creditNote(held,event.note.time,clip.segment.gain*(clip.layers[event.part] ?? 1),event.note.velocity,clip);
+            continue;
+          }
+        }
+        if (clip.kind==='harmonic-bridge') {
+          event.audit.status=layerGain(event.part)>0 ? admit({clip,event,foreground:false,priority:-100},false) : 'muted';
+        } else admit({clip,event,foreground:fg.has(event.part),priority:priorities[event.part] ?? 0});
       }
     }
     function accent(section,kind,trigger,resource) {
@@ -366,6 +382,10 @@
       profile.cancellations++;
       linkOutcome(pending.row.intent,null);
       for (const accessory of pending.accessories) if (accessory.playing) finish(accessory.playing,.08);
+      if (pending.harmonic) {
+        finish(pending.harmonic,.035);
+        for (const note of pending.pickup.notes) if (note.status==='scheduled') note.status='cancelled';
+      }
       for (const intent of pending.cues) {
         const resource=intent.resource ?? intent.cue;
         evidence('cue-decision',intent,{resource,status:'transition-did-not-land'});
@@ -440,8 +460,12 @@
         return;
       }
       if (matched) edge={...edge,exit:matched.point.position,entry:matched.point.position};
-      const at=matched?.at ?? nextExit(edge);
-      pending={row,edge,at,expectedFrame:expectedExit(edge,intent,at),switchPoint:matched?.point,cues:[],accessories:[
+      const nominal=matched?.at ?? nextExit(edge);
+      const lead=edge.harmonicBridge ? snap(edge.harmonicBridge.lead) : 0;
+      const immediate=edge.harmonicBridge && !edge.waitForExit ? lead : 0;
+      const at=nominal+immediate;
+      pending={row,edge,at,expectedFrame:expectedExit(edge,intent,nominal)+immediate,
+        ...(lead && {pickupFrame:Math.max(frame,at-lead)}),switchPoint:matched?.point,cues:[],accessories:[
         [edge.bridge,'bridge',edge.pickup],
         [edge.commonTone?.segment,'common-tone',edge.commonTone?.pickup ?? 0]
       ].filter(([clip])=>clip).map(([clip,kind,pickup])=>{
@@ -452,20 +476,106 @@
       log('transition-planned',{trigger:row.intent,from:section,to:target,exitFrame:at,exit:edge.exit,entry:edge.entry,
         ...(matched && {switchPoint:matched.point})});
     }
+    function sounding(clip) {
+      return voices.filter(voice=>voice.clip?.kind==='segment' && ((voice.owner ?? voice.clip)===clip || voice.persistent) &&
+        voice.first<frame && voice.off>=frame && voice.last>frame && voice.fadeEnd===Infinity && !voice.replacement &&
+        !voice.unheard && voice.lastSound>=frame-snap(.04) && layerGain(voice.part)>0 && voice.clip.layers[voice.part]!==0 &&
+        compiled[voice.clip.source].arrangement.parts[voice.part].role!=='percussion');
+    }
+
+    function startHarmonicPickup(plan) {
+      const {row,edge,at}=plan, {intent}=row, config=edge.harmonicBridge, part=config.track;
+      if (at-frame<snap(.045) || accents.length>=maxVoices || layerGain(part)===0 ||
+        (intent.layers?.[part] ?? segments[intent.to].layers[part])===0) return;
+      const held=sounding(active);
+      if (!held.length) return;
+      const choice=choose(intent.to,'harmonic-bridge',[...via.slice(-7),active.section],intent.rule ?? null);
+      const score=compiled[choice.source], target=B.chord(score,edge.entry);
+      if (!target) return;
+      const pitches=B.line(held,target,config);
+      if (!pitches.length) return;
+      const length=(at-frame)/rate, beat=score.clock.sample(edge.entry).beat;
+      const clip=begin(intent.to,edge.entry,intent.layers ?? {},0,'harmonic-bridge','pickup',undefined,choice);
+      clip.stop=at;
+      clip.segment={...clip.segment,end:edge.entry+length};
+      clip.next=0;
+      const period=Math.floor((at-frame)/pitches.length);
+      clip.notes=pitches.map((midi,i)=>{
+        const first=frame+i*period, end=first+Math.max(1,Math.round(period*.78)), local=edge.entry+(first-frame)/rate;
+        const audit={midi,firstFrame:first,gateEndFrame:end,status:'scheduled'};
+        const note={part,beat,time:local,gate:(end-first)/rate,midi,frequency:score.program.chordPitch(midi,edge.entry),
+          velocity:config.velocity,roundRobin:i,play:{},salt:hash([active.section,intent.to,first,midi])};
+        return {part,note,track:score.tracks[part],at:local,audit};
+      });
+      plan.harmonic=clip;
+      plan.selection=choice;
+      plan.pickup={track:part,source:choice.source,chord:target.name,firstFrame:frame,landingFrame:at,
+        sounding:[...new Set(held.map(voice=>voice.pitch))].sort((a,b)=>a-b),notes:clip.notes.map(event=>event.audit)};
+      accents.push(clip);
+      profile.peakClips=Math.max(profile.peakClips,accents.length+1);
+      log('harmonic-pickup',{from:active.section,to:intent.to,pickup:plan.pickup});
+    }
+
+    function carryHarmony(outgoing,incoming,entry) {
+      const target=B.chord(compiled[incoming.source],entry);
+      if (!target) return {chord:null,held:[]};
+      const shared=sounding(outgoing).filter(voice=>target.classes.has(B.pitchClass(voice.pitch)) &&
+        incoming.layers[voice.part]!==0);
+      const available=new Set(shared);
+      const held=shared.map(voice=>({part:voice.part,pitch:voice.pitch,firstFrame:Math.max(0,voice.first),
+        fromGateEndFrame:voice.off,gateEndFrame:voice.off,openingAttackReused:false}));
+      const details=new Map(shared.map((voice,i)=>[voice,held[i]]));
+      incoming.tied=new Map();
+      const openingEnd=Math.min(incoming.segment.end,target.until,entry+.04);
+      for (let i=incoming.next;i<incoming.notes.length;i++) {
+        const event=incoming.notes[i], {note,part}=event;
+        if (event.at>=openingEnd) break;
+        if (!note.velocity || !soundingTrack(incoming,part)) continue;
+        const frequency=note.frequency*2**((note.play.bend ?? 0)/1200);
+        const patch=patchKeys.get(incoming.source).get(part);
+        const voice=[...available].find(voice=>voice.part===part && voice.pitch===note.midi &&
+          patchKeys.get(voice.clip.source).get(part)===patch && voice.articulation===note.play.articulation && Math.abs(1200*Math.log2(voice.frequency/frequency))<3);
+        if (!voice) continue;
+        const first=frameAt(incoming.phase,event.at);
+        const gate=frameAt(incoming.phase,Math.min(note.time+note.gate,note.choke ?? Infinity));
+        if (gate<=first || voice.last<=first) continue;
+        if (gate>voice.off) {
+          const last=voice.extend?.(gate);
+          if (last==null) continue;
+          voice.off=gate;
+          voice.last=last;
+        }
+        if (voice.last<gate) continue;
+        available.delete(voice);
+        incoming.tied.set(event,voice);
+        const detail=details.get(voice);
+        detail.gateEndFrame=voice.off;
+        detail.openingAttackReused=true;
+      }
+      for (const voice of shared) voice.owner=incoming;
+      return {chord:target.name,held};
+    }
+    function soundingTrack(clip,part) {
+      return clip.layers[part]!==0 && layerGain(part)>0;
+    }
+
     function commit() {
+      if (pending.pickupFrame===frame) startHarmonicPickup(pending);
       for (const accessory of pending.accessories) if (accessory.at===frame)
         accessory.playing=accent(accessory.clip,accessory.kind);
       if (pending.at!==frame) return;
       const {row,edge,cues,switchPoint,expectedFrame}=pending, {intent}=row, outgoing=active;
-      finish(outgoing,edge.tail,Boolean(switchPoint));
+      finish(outgoing,edge.tail,Boolean(switchPoint || edge.harmonicBridge));
       const hearing={phrases:phrasing.counts(),
         ...(memory && {themes:memory.at(time())})};
       via.push(outgoing.section);
       if (via.length>8) via.shift();
       incomingRule=intent.rule ?? null;
       const phase=switchPoint && frame<outgoing.stop ? outgoing.phase : undefined;
-      active=begin(intent.to,edge.entry,intent.layers ?? {},edge.fadeIn,'segment','entry',phase);
-      const held=voices.filter(voice=>voice.last>frame && (voice.persistent || (switchPoint && voice.clip===outgoing))).map(voice=>({
+      active=begin(intent.to,edge.entry,intent.layers ?? {},edge.fadeIn,'segment','entry',phase,pending.selection);
+      const harmony=edge.harmonicBridge && carryHarmony(outgoing,active,edge.entry);
+      if (harmony) releaseDeparting(outgoing,edge.tail);
+      const held=voices.filter(voice=>voice.last>frame && (voice.persistent || voice.owner===active || (switchPoint && voice.clip===outgoing))).map(voice=>({
         part:voice.part,pitch:voice.pitch,phaseFrames:frame-voice.first,gateEndFrame:voice.off,releaseEndFrame:voice.last,
         state:frame<voice.off ? 'held' : 'release',...(switchPoint && {source:voice.clip.source})
       }));
@@ -475,7 +585,8 @@
           played:Math.min(outgoing.segment.end,playhead(outgoing)),tail:edge.tail},
         entry:{source:active.source,offset:edge.entry,phrase:active.phrase,themeMatch:active.themeMatch,fadeIn:edge.fadeIn},
         ...(switchPoint && {switchPoint}),heard:hearing,carry:{held,echoes:[...echoes].filter(([,echo])=>echo.until>frame).map(([key])=>key),
-          room:true,roomLastInputFrame:roomLastInput,bridge:edge.bridge ?? null,commonTone:edge.commonTone ?? null}};
+          room:true,roomLastInputFrame:roomLastInput,bridge:edge.bridge ?? null,commonTone:edge.commonTone ?? null,
+          ...(harmony && {harmonicBridge:{...harmony,pickup:pending.pickup ?? null}})}};
       profile.transitions++;
       boundedPush(joins,detail,traceLimit);
       if (frame>expectedFrame) diagnostics.issue('late-musical-join',expectedFrame,frame+1,{
@@ -485,7 +596,7 @@
       },intent);
       log('transition',detail);
       if (observedInputs) {
-        const lastVoiceFrame=voices.reduce((last,voice)=>voice.clip===outgoing && !voice.persistent ? Math.max(last,voice.last) : last,frame);
+        const lastVoiceFrame=voices.reduce((last,voice)=>(voice.owner ?? voice.clip)===outgoing && !voice.persistent ? Math.max(last,voice.last) : last,frame);
         evidence('transition',intent,{...detail,lastVoiceFrame});
       }
       pending=null;
@@ -605,6 +716,8 @@
         for (const voice of voices) {
           const gap=voice.read(frame,pair);
           const gain=fadeAt(voice,frame)*voice.strength, vl=pair[0]*gain,vr=pair[1]*gain;
+          if (hasBridges && voice.clip?.kind==='segment' && Math.max(Math.abs(vl),Math.abs(vr))>1e-6)
+            voice.lastSound=frame;
           if (gap) {
             diagnostics.stream(voice,gap,frame,undefined,voice.trigger);
             if (!gap.recovered) {
@@ -662,7 +775,7 @@
           strip.tick(lane.l,lane.r,frame,mixed,local,
             track.mix.duck ? recentNotes.get(clip.source+'/'+track.mix.duck.from+(clip.kind==='segment' ? '' : '/accent')) ?? null : null);
           lane.l=lane.r=0;
-          const level=clip.kind==='segment'?layerGain(part):1;
+          const level=clip.kind==='segment'||clip.kind==='harmonic-bridge'?layerGain(part):1;
           const dryL=mixed[0]*level, dryR=mixed[1]*level;
           l+=dryL; r+=dryR;
           sendL+=dryL*mixed[2]; sendR+=dryR*mixed[2];

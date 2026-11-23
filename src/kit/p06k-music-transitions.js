@@ -74,7 +74,7 @@
     'Stinger rules need a mapped resource and a section in which to withhold it');
     const rules=new Map();
     for (const edge of edges) {
-      check(fields(edge,['from','to','exit','entry','tail','fadeIn','bridge','pickup','commonTone','switchPoints']) && known(edge.from) &&
+      check(fields(edge,['from','to','exit','entry','tail','fadeIn','bridge','pickup','commonTone','switchPoints','harmonicBridge']) && known(edge.from) &&
         known(edge.to) && (edge.bridge===undefined || known(edge.bridge)),'Invalid music transition edge');
       const key=edge.from+'>'+edge.to;
       check(!rules.has(key),'Duplicate music transition edge');
@@ -108,8 +108,19 @@
         const clip=segments[tone.segment];
         numeric(tone.pickup ?? 0,0,Math.min(4,clip.end-clip.start-.001),'common tone pickup');
       }
+      let harmonicBridge;
+      if (edge.harmonicBridge!==undefined) {
+        check(live,'Render a harmonic bridge with music live replay');
+        check(!edge.bridge && !tone && edge.from!==edge.to,'Use a harmonic bridge on a distinct edge without an authored pickup');
+        harmonicBridge=P.musicHarmonicBridge.compile(edge.harmonicBridge);
+        const variants=[to.source,...(routes.get(edge.to) ?? []).map(row=>row.source),
+          ...(spec.phrasing?.routes?.[edge.to] ?? []).map(row=>row.source)];
+        check(variants.every(source=>Object.hasOwn(compiled[source].tracks,harmonicBridge.track) &&
+          compiled[source].arrangement.parts[harmonicBridge.track].role!=='percussion'),
+        'Every destination phrase needs the harmonic bridge pitched track');
+      }
       rules.set(key,{exit,entry,tail,fadeIn,bridge:edge.bridge,pickup,commonTone:tone,
-        ...(live && {waitForExit:edge.exit!==undefined})});
+        ...(harmonicBridge && {harmonicBridge}),...(live && {waitForExit:edge.exit!==undefined})});
     }
     if (id(spec.performers?.roomSource)) load(spec.performers.roomSource);
     return {compiled,segments,end,known,memory,routes,phrasing,stingers,holds,rules};
