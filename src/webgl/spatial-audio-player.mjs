@@ -231,7 +231,7 @@ export function createSpatialAudioPlayer(context, {
       if(row.direct)row.branches.push(row.direct);
       for(const tap of live.reflections??[]){
         const {gain,cutoff,apparentSource,radiation}=tap;
-        const echo=branch({...live,gain,cutoff,apparentSource,radiation,bands:tap.bands??{low:gain,mid:gain,high:gain}},
+        const echo=branch({...live,gain,cutoff,apparentSource,radiation,bands:radiation?tap.bands:{low:gain,mid:gain,high:gain}},
           buffer,row.when+tap.delay);
         if(echo)row.branches.push(echo);
       }
