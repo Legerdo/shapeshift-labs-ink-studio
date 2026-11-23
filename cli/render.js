@@ -116,6 +116,7 @@ const Precipitation = require('./precipitation.js');
 const RainImpacts = require('./rain-impacts.js');
 const AtlasSprites = require('../src/atlas-sprites.js');
 const AtlasRaster = require('./atlas-sprites.js');
+const Multiprojection = require('./multiprojection.js');
 const SurfaceRaster = require('./sprite-surfaces.js');
 const SemanticMipmaps = require('../src/semantic-texture-mipmaps.js');
 const SimulationMaterialLayers=require('../src/simulation-material-layers.js');
@@ -927,6 +928,7 @@ function renderFrame(world, o, preparedPalettes) {
       (native.orderFallback || samples.orderFallback) && { orderFallback: true },
       native.transparencyReport && { transparencyReport:native.transparencyReport },
       native.volumeStats && { volumeStats: native.volumeStats },
+      native.multiprojection && { multiprojection:native.multiprojection },
       o.captureFog && native.fog && { fog: native.fog }), native.passes, native.fog, native.effectSignals, native.color,
       native.paletteState,native.paletteInventory,reference,native.paintStage);
   }
@@ -1136,14 +1138,19 @@ function renderFrame(world, o, preparedPalettes) {
   const volumeConfig={...world.volumeQuality,...o.volumeQuality};
   const depthFogRequested=volumes.length && (volumeConfig.reconstruction==='lighting' || volumeConfig.composition==='depth');
   const captureFogOwners=depthFogRequested && N===0;
+  const localProjection=reflectionPlane || probeView || o.captureCoverage ? null :
+    Multiprojection.frame(Multiprojection.prepare(o.multiprojection ?? look.multiprojection),surfaceLayers,
+      {V,ortho,near,w:W,h:H,focal,time:t});
   const surfaceFragments = SurfaceRaster.rasterize(surfaceLayers, { V, W, H, focal, ortho, near,simulationLayers,
-      far:camera.clipFar, clip: geometryClip,
+      far:camera.clipFar, clip: geometryClip,multiprojection:localProjection,
       paletteSampling: o.paletteSampling, semanticMipmaps:o.semanticMipmaps, surfaceNormals: o.surfaceNormals, artScale: o.artGridScale || 1,
       capture:captureTexturedSurface, motion:!!temporal||captureSurfaceMotion, meshMask:geometryMask?.meshCodes, spriteLOD,
       captureFogOwners,
       lightingTargets:artLighting || o.bounceProbes!==false &&
         (o.bounceProbes===true?world.bounceProbes:o.bounceProbes??world.bounceProbes)?.geometry,
       omit:useSdf && brickFrames.length ? (object,material,point)=>sdfSettings.allows({object,entity:object,material},point) : undefined });
+  const localProjectionHits=surfaceFragments.some(sample=>sample.localProjection) && new Uint8Array(W*H);
+  if (localProjectionHits) for (const sample of surfaceFragments) if (sample.localProjection) localProjectionHits[sample.p]=1;
   const sdf = useSdf ? SdfRaster.rasterize(world,d,sdfSettings,{w:W,h:H,rayAt,near,clip:geometryClip,
     editable:brickFrames,visible:geometryMask ? (row,x,y)=>spriteLOD.geometry(geometryMask.codes[row],x,y) : undefined}) : null;
   for (const sample of sdf?.samples ?? []) surfaceFragments.push(sample);
@@ -1256,7 +1263,7 @@ function renderFrame(world, o, preparedPalettes) {
     return { ...quality, time: t, depthOffset, waterTime: motion.water, waterWind, cloudShadow, flash, media, exposure, cutouts, cloud:cloudView, effectCoverage: trackMedia,
       cloudStart:cloudView && eyeD-dist, fogTransmittance:!!fogPass, bands:direction?.bands, counters:counters?.volume };
   };
-  const geometrySample = probe || sortedSurfaces || selectiveEnabled || sdf || emitterHits || aerial || cloudShadow || flash || cloudView ? sampleFrames(world, t) : null;
+  const geometrySample = probe || sortedSurfaces || selectiveEnabled || sdf || emitterHits || localProjectionHits || aerial || cloudShadow || flash || cloudView ? sampleFrames(world, t) : null;
   const captured = o.captureCoverage || transparent ? new Float32Array(W * H) : null;
   // The reflected pass uses the same projection and reads only the plane's front side.
   const reflectionTint = effects?.reflection || o.reflectionTint;
@@ -1892,7 +1899,7 @@ function renderFrame(world, o, preparedPalettes) {
   const FN =
       (defaultFine || detailBudget?.fineOn) && world.fine && world.fine.length >= baseCount * 12 ? world.fine : null,
     FPAL = FN ? world.pal.map((h, i) => hex(i)) : null;
-  let deferred = !selectiveEnabled && (sortedSurfaces || sdf || emitterHits) ? new Map() : null, deferredCount = 0, orderFallback = false;
+  let deferred = !selectiveEnabled && (sortedSurfaces || sdf || emitterHits || localProjectionHits) ? new Map() : null, deferredCount = 0, orderFallback = false;
   let curveCoverageQueued = false;
   function countDeferred() {
     if (curveScene && deferredCount >= fragmentBudget)
@@ -2085,7 +2092,7 @@ function renderFrame(world, o, preparedPalettes) {
       if (localTransparency && sprite.alpha >= 1 && !sprite.effect) continue;
       const sample=spriteSample(sprite);
       if (localTransparency) localTransparency.add(sprite.p,sprite.z,sample);
-      else if (deferred && (queued || sdf?.hits[sprite.p] || emitterHits?.[sprite.p])) {
+      else if (deferred && (queued || sdf?.hits[sprite.p] || emitterHits?.[sprite.p] || localProjectionHits?.[sprite.p])) {
         if (deep || blendDepth || curveScene) countDeferred();
         if (!deferred.has(sprite.p)) deferred.set(sprite.p,[]);
         deferred.get(sprite.p).push({ sort:sprite.z,index:spriteIndex-sprites.length-1,center:sprite.z,sample });
@@ -2556,7 +2563,7 @@ function renderFrame(world, o, preparedPalettes) {
         a *= geometryWeight;
         if (a < minimumAlpha) continue;
         const sdfRow = sdf?.rows[i], sdfHit = sdf?.hits[p];
-        const preciseDepth = sdfHit || emitterHits?.[p];
+        const preciseDepth = sdfHit || emitterHits?.[p] || localProjectionHits?.[p];
         const exact = sdfRow && sdf.fragment(sdfRow,p,rayAt(ix+.5,iy+.5),-cz);
         if (exact === false || exact && pixelSurface && PIX[exact.row.i*8]) continue;
         let sectionZ, sectionTint = 0;
@@ -2769,6 +2776,7 @@ function renderFrame(world, o, preparedPalettes) {
         }
         if (probe && !curveFootprint?.depths) probe(p, i, -cz, surfaceZ, pr, pg, pb, a, curveHit?.normal);
         if (!deep && !blendDepth && !planarFootprints && !curveScene && deferred && deferredCount >= fragmentBudget) {
+          if (localProjectionHits) throw new RangeError('Multiprojection exceeded the shared depth fragment budget');
           playFragments(false,-cz);
           orderFallback = true;
         }
@@ -3539,7 +3547,9 @@ function renderFrame(world, o, preparedPalettes) {
     }
     motionCoverageFrame?.commit();
     if (partCapture) o.partMotionHistory?.store(motionReference.partMotion, partCapture.reset);
+    if (localProjection && o.worked) o.multiprojectionFrame?.(localProjection.report);
     return {
+      ...(localProjection && {multiprojection:localProjection.report}),
       w: W, h: H, color: Uint8Array.from(c2, v => Math.round(clamp(v, 0, 1) * 255)), depth: dep, drawn,
       ...(filterMatte && {matte:filterMatte}),
       ...(strand?.inspected && { strandPixel: strand.inspected }),
@@ -3912,6 +3922,10 @@ function renderFrame(world, o, preparedPalettes) {
     ...(volumeStats && { volumeStats }), ...(silhouetteMask && {silhouetteMask}), ...(o.captureFog && atmosphere?.fog && { fog: atmosphere.fog }),
     ...(alpha && { alpha }), ...(orderFallback && { orderFallback }), ...(transparencyReport && {transparencyReport})
   }, passes, atmosphere?.fog, effectSignals, effectColor, paletteState,paletteInventory,beforePalette,paintStage);
+  if (localProjection) {
+    frame.multiprojection=localProjection.report;
+    o.multiprojectionFrame?.(frame.multiprojection);
+  }
   motionCoverageFrame?.commit();
   if (partCapture) o.partMotionHistory?.store(motionReference.partMotion, partCapture.reset);
   return frame;
