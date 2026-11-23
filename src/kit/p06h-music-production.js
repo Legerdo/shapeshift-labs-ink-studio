@@ -412,13 +412,26 @@
     const nativeGate=note.start===undefined ? Math.min(note.gate,gateEnd-note.time) : gate;
     const cropped=note.performance?.release && gateEnd<note.time+note.gate-1e-8;
     const sound=track.play.prepare(cropped ? {...note,suppressRelease:true} : note,sampleRate,nativeGate);
-    const naturalEnd=Math.min(note.choke ?? Infinity,start+sound.duration);
     const {attackFade=0,releaseLimit=Infinity}=note.play ?? {};
-    const limitedEnd=Math.min(naturalEnd,start+nativeGate+releaseLimit);
-    const shortened=tails?.length ? Q.tailLimit(tails,note.time+note.gate,limitedEnd) : null;
-    const endTime=shortened?.stop ?? limitedEnd;
-    const releaseFade=limitedEnd<naturalEnd && endTime===limitedEnd ? Math.min(.02,Math.max(.004,releaseLimit*.5)) : 0;
-    const last=Math.ceil(endTime*sampleRate);
+    let shortened,endTime,last,releaseFade;
+    function bounds(duration,noteGate,notatedEnd) {
+      const naturalEnd=Math.min(note.choke ?? Infinity,start+duration);
+      const limitedEnd=Math.min(naturalEnd,start+noteGate+releaseLimit);
+      shortened=tails?.length ? Q.tailLimit(tails,notatedEnd,limitedEnd) : null;
+      endTime=shortened?.stop ?? limitedEnd;
+      releaseFade=limitedEnd<naturalEnd && endTime===limitedEnd ? Math.min(.02,Math.max(.004,releaseLimit*.5)) : 0;
+      last=Math.ceil(endTime*sampleRate);
+    }
+    bounds(sound.duration,nativeGate,note.time+note.gate);
+    function extend(until) {
+      const end=until/sampleRate;
+      if (end>Math.min(note.choke ?? Infinity,note.clipEnd ?? Infinity)) return null;
+      const nextGate=end-(note.start===undefined ? note.time : start);
+      const duration=sound.extendGate(nextGate);
+      if (duration===null) return null;
+      bounds(duration,nextGate,end);
+      return last;
+    }
     const placementGain=note.renderGain ?? 1, entryFade=note.renderFade;
     function read(at,out) {
       if (at<first || at>=last) {
@@ -438,7 +451,8 @@
       out[0]=sound.signal(t,frame,0)*fade*placement*fadeIn*fadeOut;
       out[1]=sound.stereo ? sound.signal(t,frame,1)*fade*placement*fadeIn*fadeOut : out[0];
     }
-    return {first,last,asset:sound.asset,read,write(data,from,to) {
+    return {first,last,asset:sound.asset,read,
+      ...(sound.extendGate && !note.performance?.release && !tails?.length && {extend}),write(data,from,to) {
       const out=[0,0];
       for (let at=first;at<Math.min(last,to);at++) {
         read(at,out);

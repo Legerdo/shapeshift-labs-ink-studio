@@ -184,6 +184,9 @@ after its timestamp is counted as late and handled causally from its arrival
 frame. A transition older than a request the engine has already seen is traced
 as stale. The chosen edge uses the section currently playing on the audio clock.
 
+Use [harmonic bridges](music-harmonic-bridges.md) to generate a playable
+pickup from sounding notes and continue common tones into the next cue.
+
 Persistent performers use the existing `performers.tracks` identity and desk
 validation. Their admitted notes run through the original gate, phase,
 resonator state and release. The matched performers share their tape echo
