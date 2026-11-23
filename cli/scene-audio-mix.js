@@ -1,5 +1,6 @@
 /* Offline stereo resampling, panning, and stem summing on an absolute sample grid. */
 const WAV = require('./wav.js');
+const {addRoomResponse} = require('./scene-room-response.js');
 
 const stereo = ['timeline', 'spatial', 'music', 'tracks'];
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -103,21 +104,23 @@ function* arrivals(voices) {
   }
 }
 
-function sumVoices(voices, resolve, { start, end, sampleRate, gain = 1, cues, parametric }, buses = stereo) {
-  const count = end - start;
-  if (!Number.isSafeInteger(count) || count < 1 || count * 2 > WAV.maxSamples)
+function sumVoices(voices, resolve, { start, end, sampleRate, gain = 1, cues, parametric, roomResponse }, buses = stereo) {
+  const historyStart = Math.min(start,roomResponse?.path[0]?.sample??start), count = end-start;
+  if (!Number.isSafeInteger(count) || count < 1 || (end-historyStart)*2 > WAV.maxSamples)
     throw new RangeError('Scene soundtrack exceeds its WAV sample budget');
   const stems = new Map(buses.map(name => [name, new Float32Array(count * 2)]));
   const statistics = Object.fromEntries(buses.map(name => [name, { voices: 0, peak: 0 }]));
+  const roomInput=roomResponse && new Float32Array((end-historyStart)*2);
   let work = 0;
   for (const { stem, ...voice } of arrivals(voices)) {
     const spans = voice.admissions;
-    if (spans && !spans.some(span=>span.end>start&&span.end>span.first)) continue;
-    if (voice.end !== undefined && voice.end <= start) continue;
+    const inputStart=roomInput&&voice.points?.some(point=>point.pan!==undefined) ? historyStart : start;
+    if (spans && !spans.some(span=>span.end>inputStart&&span.end>span.first)) continue;
+    if (voice.end !== undefined && voice.end <= inputStart) continue;
     const source = resolve(voice.asset);
     if (!source.samples.length) continue;
     const p = placement(voice, source, sampleRate), bus = stems.get(stem);
-    const first = Math.max(start, p.first), last = Math.min(p.end, end);
+    const first = Math.max(inputStart, p.first), last = Math.min(p.end, end);
     if (last <= first) continue;
     const points = p.points, filters = Boolean(points?.some(row => row.cutoff < 22000));
     const tone = contextualFilter(points, sampleRate, parametric);
@@ -126,12 +129,14 @@ function sumVoices(voices, resolve, { start, end, sampleRate, gain = 1, cues, pa
     const length = spans ? spans.reduce((sum,span)=>sum+Math.max(0,Math.min(span.end,last)-Math.max(span.first,begin)),0) : last-begin;
     work += length * Math.max(2, source.channels) * (1 + (tone?.stages ?? 0));
     if (work > 240e6) throw new RangeError('Scene soundtrack exceeds its mixing work budget');
-    if(voice.reflection)statistics[stem].reflections=(statistics[stem].reflections??0)+1;
-    else statistics[stem].voices++;
+    if (last>start && (inputStart===start||!spans||spans.some(span=>span.end>start&&span.first<last))) {
+      if (voice.reflection) statistics[stem].reflections=(statistics[stem].reflections??0)+1;
+      else statistics[stem].voices++;
+    }
     if (cues&&!voice.reflection) {
       const source=typeof voice.asset==='string' ? voice.asset : stem;
       for (const span of spans??[{first,end:last}]) {
-        const fromSample=Math.max(first,span.first), toSample=Math.min(last,span.end);
+        const fromSample=Math.max(start,first,span.first), toSample=Math.min(last,span.end);
         if(fromSample<toSample)cues.push({label:voice.cue??source,source,role:stem,fromSample,toSample});
       }
     }
@@ -171,13 +176,25 @@ function sumVoices(voices, resolve, { start, end, sampleRate, gain = 1, cues, pa
         const mono = (l + r) * .5;
         low += (!filters || cutoff >= 22000 ? 1 : 1 - Math.exp(-2 * Math.PI * cutoff / sampleRate)) * (mono - low);
         if (sample < first) continue;
-        bus[n] += low * scale * Math.sqrt((1 - pan) / 2);
-        bus[n + 1] += low * scale * Math.sqrt((1 + pan) / 2);
-      } else if (sample >= first) {
+        const left=low*scale*Math.sqrt((1-pan)/2), right=low*scale*Math.sqrt((1+pan)/2);
+        if (sample>=start) {
+          bus[n]+=left;
+          bus[n+1]+=right;
+        }
+        if (roomInput) {
+          const at=(sample-historyStart)*2;
+          roomInput[at]+=left;
+          roomInput[at+1]+=right;
+        }
+      } else if (sample >= Math.max(first,start)) {
         bus[n] += l * scale;
         bus[n + 1] += r * scale;
       }
     }
+  }
+  if (roomResponse) {
+    const name=stems.has('spatial')?'spatial':'effects';
+    statistics[name].roomResponse=addRoomResponse(roomResponse,resolve,roomInput,stems.get(name),sampleRate,historyStart,start);
   }
   return {stems,statistics};
 }

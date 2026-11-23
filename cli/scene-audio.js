@@ -101,6 +101,10 @@ function createSceneAudio(definition, { kit = require('../index.js').load(), res
     const cues = timeline?.audioSchedule(clock) ?? [];
     const looping = new Map(), contactTracks = new Map(), resolved = new Map(), positional = [], following = [];
     const history = trace && { sections: [], cues: [], layers: [] };
+    const includeRoom=postSelected || selection?.kind!=='stem' || ['mix','spatial'].includes(selection.name);
+    const roomPath=includeRoom && mixer?.roomResponse ? [] : undefined;
+    const roomResponse=roomPath && {...mixer.roomResponse,path:roomPath,
+      convolution:K.procedural.mediaGraph.prepareImpulseResponse};
     const playbackReceipts = history && createPlaybackReceipts({sampleRate,end,post});
     let next = 0, score = [], automated = [], knots = 0, generated, produced, entry, worldReport;
     const productionIntents=[], worldEvents=[], productionSources=new Map();
@@ -329,6 +333,14 @@ function createSceneAudio(definition, { kit = require('../index.js').load(), res
       const target = audition && events.find(event=>event.id===audition.event && beat(event)?.beatId===audition.beatId);
       const state = mixer?.frame({query,listener,time,events,captureSources:trace,playback,receipts,
         ...(target && {audition})});
+      if (roomPath && sample<end) {
+        const {room,doorway,sends}=state.roomResponse;
+        const previous=roomPath.at(-1);
+        if (!previous || previous.room!==room || previous.doorway!==doorway ||
+            sends.length!==previous.sends.length || sends.some(({asset,gain},i)=>
+              asset!==previous.sends[i].asset || Math.abs(gain-previous.sends[i].gain)>1e-9))
+          append(roomPath,{sample,room,doorway,sends});
+      }
       const byId = history && state?.cues.length ? new Map(events.map(event=>[event.id,event])) : null;
       cueFrame(query, sample, nextSample, state?.listener);
       if (state) {
@@ -469,10 +481,10 @@ function createSceneAudio(definition, { kit = require('../index.js').load(), res
     const active=voices.filter(row => row.first < end && (postSelected || !selection ||
       (selection.kind==='stem' ? selection.name==='mix' || row.stem===selection.name :
         row.stem==='spatial' && row[selection.by]===selection.name)));
-    if (delivery) return post.prepare(active,resolve,{start,end,gain},true);
-    const result=postSelected ? post.render(active,resolve,{start,end,gain},selection) :
-      mix(active,resolve,{start,end,sampleRate,gain,capture:selection!==undefined,parametric:K.procedural.audioParametric});
-    if (selection?.kind==='world' && !result.report.stems.spatial.voices)
+    if (delivery) return post.prepare(active,resolve,{start,end,gain,roomResponse},true);
+    const result=postSelected ? post.render(active,resolve,{start,end,gain,roomResponse},selection) :
+      mix(active,resolve,{start,end,sampleRate,gain,capture:selection!==undefined,parametric:K.procedural.audioParametric,roomResponse});
+    if (selection?.kind==='world' && !result.report.stems.spatial.voices && !result.report.stems.spatial.roomResponse?.assets)
       throw new RangeError('No audible world source in the selected capture range');
     if (worldReport) result.report.worldScore=worldReport;
     if (worldSoundPacks.length) result.report.worldSoundPacks=worldSoundPacks;
@@ -482,6 +494,7 @@ function createSceneAudio(definition, { kit = require('../index.js').load(), res
         .map(row=>({...row.contact,cue:row.cue,asset:row.asset,bus:row.bus,stem:row.stem,
           fromSample:Math.max(row.first,start),toSample:Math.min(row.end??end,end)}));
       if (contacts.length) history.contacts=contacts;
+      if (roomPath) history.roomResponse={...mixer.roomResponse,path:roomPath};
       history.playbackReceipts=playbackReceipts.finish(resolve,gain);
       result.report.storyAudio=history;
     }
