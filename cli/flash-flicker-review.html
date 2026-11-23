@@ -85,12 +85,13 @@ function startTime(index) {
   return retainsLead ? Math.max(seekable, first) : seekable;
 }
 function select(i, time = Math.max(0, video.currentTime - startTime(active))) {
-  active = i;
-  video.onloadedmetadata = () => {
-    const target = startTime(i) + time;
-    if (target > 0) video.currentTime = target;
-  };
-  video.src = options[i][1];
+  function seek() { video.currentTime = startTime(i) + time; }
+  if (i === active && video.readyState >= 1) seek();
+  else {
+    active = i;
+    video.onloadedmetadata = seek;
+    video.src = options[i][1];
+  }
   buttons.forEach((button, index) => button.setAttribute('aria-pressed', String(index === i)));
 }
 select(0);
@@ -116,7 +117,7 @@ for (const event of report.events) {
   const row = add(at('events'), 'tr');
   const button = add(add(row, 'td'), 'button', String(event.peak));
   button.type = 'button';
-  button.addEventListener('click', () => select(0, (event.peak - report.source.firstFrame) / report.source.fps));
+  button.addEventListener('click', () => select(0, (event.peak - report.source.firstFrame + .5) / report.source.fps));
   add(row, 'td', String(event.frame));
   add(row, 'td', (100 * event.area).toFixed(1) + '%');
   add(row, 'td', event.origin.replaceAll('-', ' ') + (event.crossesEdit ? ' · crosses edit' : ''));
