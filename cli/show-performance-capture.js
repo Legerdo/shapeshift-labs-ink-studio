@@ -141,20 +141,20 @@ function create(directory, config, source) {
           ...(config.audio && { staticAudio: { file: config.audio === 'video' ? 'video' : relative(directory, config.audio),
             ...(config.audio === 'video' && { video: relative(directory, config.video) }), fallback: audioFallback } }),
           ...(source.score && { score: { recipe: relative(directory, source.score.recipe), route: relative(directory, source.score.route) } }) };
-        stage.json('run.json', run);
+        stage.save('run.json', JSON.stringify(run) + '\n');
       }
       const rows = cases.map((row, i) => {
         const file = 'case-' + String(i + 1).padStart(2, '0') + '.json';
         const { from, to, faults, pictures, audio, omittedFaults, omittedAudio } = row;
         const links = pictures.flatMap(row => row.beats);
         const beats = beatsFor(from, to, links, faults);
-        const canReplay = run && (unavailableFrom === undefined || unavailableFrom >= to);
+        const canReplay = run && (pictures.length > 0 || audio.length > 0) && (unavailableFrom === undefined || unavailableFrom >= to);
         const replay = canReplay ? { run: 'run.json' } : null;
         const incidents = faults.map(fault => ({ ...fault,
           beats: beats.filter(beat => beat.fromFrame < fault.toFrame && beat.toFrame > fault.fromFrame).slice(0, 32) }));
         stage.json(file, { format, version: 1, fromFrame: from, toFrame: to, frameBudgetMs: 1000 / config.fps,
           status: summary.reason, faults: incidents, beats, picture: pictures, audio: { blocks: audio, omitted: omittedAudio },
-          omittedFaults, replay, ...(!replay && { unavailable: unavailable ?? 'no-rendered-frames' }) });
+          omittedFaults, replay, ...(!replay && { unavailable: unavailable ?? 'no-work-in-capture-window' }) });
         return { file, fromFrame: from, toFrame: to, faults: faults.length, replayable: Boolean(replay) };
       });
       const result = { format: 'ink-studio/beat-performance-capture', version: 1, cases: rows, omitted };
