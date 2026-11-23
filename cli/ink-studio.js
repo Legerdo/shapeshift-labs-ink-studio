@@ -191,7 +191,8 @@ function scene(id) {
 }
 const paintDirectory = id => path.resolve(CWD, opt.dir || path.join(cfg.paint || 'studio/paint', id));
 const readPaint = file => fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {};
-function build(id, seedOverride, { paint = true, retainSdf = false, parameterInputs, controls: suppliedControls } = {}) {
+function build(id, seedOverride, { paint = true, retainSdf = false, retainReferenceSdf = false,
+  parameterInputs, controls: suppliedControls } = {}) {
   if (opt.focus) {
     const f = list('focus'); // uneven detail: x,y,z then near, far, coarse
     globalThis.INK_FOCUS = { p: [f[0] || 0, f[1] || 0, f[2] || 0], near: f[3], far: f[4], coarse: f[5] };
@@ -234,12 +235,15 @@ function build(id, seedOverride, { paint = true, retainSdf = false, parameterInp
     return (s.animate && s.animate(built, seed)) || built;
   };
   const previousSdf = globalThis.INK_RETAIN_RENDER_SDF;
+  const previousReferenceSdf = globalThis.INK_RETAIN_REFERENCE_SDF;
   let w;
   try {
     if (retainSdf) globalThis.INK_RETAIN_RENDER_SDF = true;
+    if (retainReferenceSdf) globalThis.INK_RETAIN_REFERENCE_SDF = true;
     w = liveSunOption() ? require('./look-preview.js').withAlbedo(assemble) : assemble();
   } finally {
     if (retainSdf) globalThis.INK_RETAIN_RENDER_SDF = previousSdf;
+    if (retainReferenceSdf) globalThis.INK_RETAIN_REFERENCE_SDF = previousReferenceSdf;
   }
   if (inputs) {
     const actual = w.simulationInputs && lib().KIT.simulationInputs.tracks(w.simulationInputs);
@@ -1179,6 +1183,7 @@ const CMD = {
         '  render <id> [--t 1.5]       one PNG rendered on the CPU',
         '  bounce-probes bake <scene> [--bounce-probes settings.json] --out probes.json',
         '  bounce-probes review <scene> --out directory [--from 0 --to 3 --fps 12 --w 184 --h 112]',
+        '  sdf-reference <scene> --out directory [--t 0,1.2 --w 192 --h 120 --samples 32 --bounces 3]',
         '  render/clip --dynamic-bounce off   reuse the baked probes without sampling moving sources',
         '  render <id> --palette-constraints <file.json|off>   override target palettes and dither settings',
         '  render <id> --coverage-aware on|off   grade target contributions before compositing',
@@ -1963,6 +1968,22 @@ const CMD = {
     fs.mkdirSync(path.dirname(file),{recursive:true});
     fs.writeFileSync(file,JSON.stringify(data,null,2)+'\n');
     console.log('baked',data.probes.length,'bounce probes to',file);
+  },
+  'sdf-reference'() {
+    if (pos.length !== 1 || typeof opt.out !== 'string' ||
+        opt.t !== undefined && (typeof opt.t !== 'string' || opt.t.split(',').some(value=>!value.trim())))
+      die('Use sdf-reference <scene> --out directory [--t 0,1.2 --w 192 --h 120 --samples 32 --bounces 3]');
+    if (artPixelSize !== undefined && artPixelSize !== 1) die('SDF reference renders at native art resolution');
+    const directory = outputFile('sdf-reference');
+    const relative = path.relative(directory,path.resolve(pos[0]));
+    if (/^(?:index\.html|review\.json|frame-\d\d-[a-z]+\.png)$/.test(relative))
+      die('Write the SDF reference separately from its inputs');
+    const api = require('./sdf-reference-review.js');
+    const settings = api.settingsFor({ width:num('w',192),height:num('h',120),times:list('t',[0]),
+      samples:num('samples',32),bounces:num('bounces',3),epsilon:num('epsilon',.001),steps:num('steps',160),
+      seed:num('trace-seed',1),exposure:num('reference-exposure',1) });
+    const report = api.review(buildPreview(pos[0],{ retainReferenceSdf:true }),directory,{ ...settings,pose,view });
+    console.log('Traced',report.frames.length,'native reference frames. Wrote',directory);
   },
   environment() {
     if (pos[0] === 'aesthetics') {

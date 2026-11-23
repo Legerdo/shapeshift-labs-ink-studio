@@ -179,6 +179,16 @@ function makeBuilder(seed, hex, { renderMetadata = true, initialCapacity = 1 << 
     }
     materialAlbedo.fill(rgb + 1, first, end);
   }
+  function keepSdf(sources) {
+    return source => {
+      for (const ranges of source.rows.values()) for (const range of ranges) {
+        const [start,end] = range, points = new Float32Array((end-start)*3);
+        for (let i=start;i<end;i++) points.set(data.subarray(i*16,i*16+3),(i-start)*3);
+        range.push(points);
+      }
+      sources.push(source);
+    };
+  }
   function describeFootprint(first, end, definition, frame) {
     if (first >= end || definition === undefined) return;
     footprintRecorder ??= SplatFootprints.recorder();
@@ -284,7 +294,7 @@ function makeBuilder(seed, hex, { renderMetadata = true, initialCapacity = 1 << 
     surfaceData = null,
     surfacePending = false,
     shadowLod;
-  const renderSdfs = [];
+  const renderSdfs = [], referenceSdfs = [];
   let bevelIds = new WeakMap();
   const surfaces = [],
     surfaceIds = new Map(),
@@ -1135,6 +1145,7 @@ function makeBuilder(seed, hex, { renderMetadata = true, initialCapacity = 1 << 
         ...(correctionRows.length && { paintCorrections: PaintCorrections.bind(correctionRows) }),
         renderMetadata: renderRows(),
         ...(renderSdfs.length && {renderSdfs:renderSdfs.slice()}),
+        ...(referenceSdfs.length && { referenceSdfs: referenceSdfs.slice() }),
         ...(precipitationRanges.length && { precipitationRanges: precipitationRanges.slice() }),
         ...(fallingSnowRanges.length && { fallingSnowRanges: fallingSnowRanges.slice() }),
         ...(materialAlbedo && { materialAlbedo: materialAlbedo.slice(0, n) }),
@@ -1224,6 +1235,7 @@ function makeBuilder(seed, hex, { renderMetadata = true, initialCapacity = 1 << 
     shadowLod = undefined;
     surfaces.length = 0;
     renderSdfs.length = 0;
+    referenceSdfs.length = 0;
     surfaceIds.clear();
     bevelIds = new WeakMap();
     bounced = 0;
@@ -1275,14 +1287,8 @@ function makeBuilder(seed, hex, { renderMetadata = true, initialCapacity = 1 << 
     count: () => n,
     describeOptical,
     renderSdfSources: () => renderSdfs.slice(),
-    keepRenderSdf(source) {
-      for (const ranges of source.rows.values()) for (const range of ranges) {
-        const [start,end] = range, points = new Float32Array((end-start)*3);
-        for (let i=start;i<end;i++) points.set(data.subarray(i*16,i*16+3),(i-start)*3);
-        range.push(points);
-      }
-      renderSdfs.push(source);
-    },
+    keepRenderSdf: keepSdf(renderSdfs),
+    keepReferenceSdf: keepSdf(referenceSdfs),
     describeSplats: renderMetadata ? describeSplats : undefined,
     describeAlbedo,
     describePixelStyle,
