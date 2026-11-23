@@ -2,6 +2,7 @@
 const fs=require('node:fs'), path=require('node:path');
 const PNG=require('./png.js'), WAV=require('./wav.js'), {json}=require('./asset-files.js');
 const {readTakePicture}=require('./take-picture.js');
+const {measureAttacks}=require('./audio-attacks.js');
 
 const format='ink-studio/delivered-sync-check', reportFormat='ink-studio/delivered-sync-report';
 const maxFrame=1e9, maxWindow=720;
@@ -123,42 +124,20 @@ function analyze(file,kit) {
     check(fields(settings,['stem','channel','minStrength','minPeakDbFS','minRiseDb']) && id(name) &&
       finite(minStrength,.000001,100) && finite(minPeakDbFS,-120,0) && finite(minRiseDb,0,60),
     'Invalid sync attack detector settings');
-    const {audio,startSample,file}=stem(name), {sampleRate,channels,samples}=audio, count=samples.length/channels;
+    const {audio,startSample,file}=stem(name), {sampleRate,channels}=audio;
     check(channel==='all' || channel==='mix' || integer(channel,0,channels-1),'Invalid sync detector channel');
     const rate=T.read(sampleRate);
     const ceilAt=frame=>-T.index(T.roundDown(T.mul(frameTime(frame),T.read(-sampleRate))));
     const low=ceilAt(from)-startSample, high=ceilAt(to)-startSample;
     const range={firstSample:low+startSample,endSample:high+startSample};
     const base={stem:name,file:relative(file),sampleRate,startSample,range};
-    if (low<0 || high>count || high<=low) return {...base,status:'uncovered',hit:null,candidates:[]};
-    const pad=Math.round(.12*sampleRate), first=Math.max(0,low-pad), end=Math.min(count,high+pad);
-    check(end-first<=sampleRate*20,'Sync audio search windows must be shorter than 20 seconds');
-    const pcm={sampleRate,channels,samples:samples.subarray(first*channels,end*channels)};
-    const db=value=>20*Math.log10(Math.max(1e-9,value));
-    function peak(a,b,ch) {
-      let result=0;
-      for (let i=Math.max(0,a);i<Math.min(b,count);i++) {
-        let value=0;
-        if (ch==='mix') {
-          for (let c=0;c<channels;c++) value+=samples[i*channels+c]/channels;
-        } else value=samples[i*channels+ch];
-        result=Math.max(result,Math.abs(value));
-      }
-      return db(result);
-    }
-    const margin=Math.round(sampleRate*.012);
-    const candidates=P.mediaGraph.detectTransients(pcm,{channel,minStrength}).events.flatMap(({detected})=>{
-      const sample=first+detected.sample;
-      if (sample<low || sample>=high) return [];
-      const level=peak(sample,sample+margin,detected.channel);
-      const baseline=peak(sample-margin,sample-Math.round(sampleRate*.002),detected.channel);
-      if (level<minPeakDbFS || level-baseline<minRiseDb) return [];
-      const coordinate=sample+startSample;
-      return [{sample:coordinate,fileSample:sample,seconds:T.seconds(T.div(T.read(coordinate),rate)),
-        channel:detected.channel,strength:detected.strength,peakDbFS:level,riseDb:level-baseline}];
+    const {status,candidates:local}=measureAttacks(P.mediaGraph,audio,
+      {from:low,to:high,channel,minStrength,minPeakDbFS,minRiseDb});
+    const candidates=local.map(({sample:fileSample,...detail})=>{
+      const sample=fileSample+startSample;
+      return {sample,fileSample,seconds:T.seconds(T.div(T.read(sample),rate)),...detail};
     });
-    const hit=candidates.length===1 ? candidates[0] : null;
-    return {...base,status:hit ? 'measured' : candidates.length ? 'ambiguous' : 'unobserved',hit,candidates};
+    return {...base,status,hit:candidates.length===1?candidates[0]:null,candidates};
   }
 
   const used=new Set();

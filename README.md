@@ -44,6 +44,7 @@ The package includes geometry, materials, lighting, animation, character control
 - [Search for hard-to-stage routes](docs/staging-route-search.md)
 - [Blind audiovisual review](docs/blind-av-review.md)
 - [Video codec round-trip approval](docs/video-round-trip.md)
+- [Compressed-audio round-trip approval](docs/audio-round-trip.md)
 - [WebGPU graphs and Gaussian splat import](#webgpu-graphs-and-gaussian-splat-import)
 - [Screen transitions](#screen-transitions)
 - [Module reference](#module-reference)
