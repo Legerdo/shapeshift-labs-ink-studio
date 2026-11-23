@@ -40,6 +40,7 @@ The package includes geometry, materials, lighting, animation, character control
 - [Configurable story presentation packs](docs/story-presentation-pack.md)
 - [Interactive story installation inputs](docs/story-installation-inputs.md)
 - [Story-aware rehearsal reports](docs/story-rehearsal.md)
+- [Search for hard-to-stage routes](docs/staging-route-search.md)
 - [WebGPU graphs and Gaussian splat import](#webgpu-graphs-and-gaussian-splat-import)
 - [Screen transitions](#screen-transitions)
 - [Module reference](#module-reference)
