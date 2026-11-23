@@ -163,6 +163,7 @@ module.exports = {
   exportGlb: require('./cli/export-glb.js'),
   ...require('./cli/gltf-asset.js'),
   render: require('./cli/render.js').render,
+  fitShotLighting: require('./cli/shot-light-fit.js').fitShotLighting,
   createMotionalCoverageHistory: require('./src/motional-coverage.js').history,
   createPartMotionHistory: require('./cli/part-motion.js').history,
   createStrandMotionHistory: require('./cli/part-motion.js').history,
