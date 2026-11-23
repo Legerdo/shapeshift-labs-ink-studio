@@ -456,6 +456,8 @@ Use [route followers and events](docs/route-followers.md) for loop-safe vehicle 
 
 Additional animation APIs include `K.anim.machine`, `K.anim.face`, `K.anim.path`, `K.anim.steer`, `K.anim.track` and `K.anim.support`. Deformation maps include body squash/stretch, noodles, folds, lattices, morphs, smears, reaction fields, foliage and line boil. Apply maps on the CPU with `K.deform.apply`, or use puppet/bone skinning with an appropriate host renderer.
 
+Use [motion matching](docs/motion-matching.md) on a procedural foot rig to choose a compatible entry pose for new steering input. The gait keeps planted feet locked and can redirect an active step.
+
 Use [procedural bodies](docs/procedural-body.md) to drive a branching creature with shared, collision-aware joints. The Sluice Diver binds its curved spine and tendrils and carries rigid parts on the same rig.
 
 Use [pose blocking and the pose shelf](docs/pose-blocking.md) to hold named story poses, draft in-betweens, and apply reusable poses to a puppet. The `pose-review` command checks the same landmarks as silhouettes at the size and angles of a directional sprite atlas.
