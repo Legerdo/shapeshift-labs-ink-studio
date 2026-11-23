@@ -363,7 +363,30 @@ function renderFrame(world, o, preparedPalettes) {
   const shutterRows = world[Shutter.rows];
   const protection = SilhouetteProtection.prepare(look.silhouetteProtection,o.silhouetteProtection);
   const passQuality = PassQuality.prepare(o.passQuality ?? look.passQuality);
-  const subject = protection?.bind(world);
+  const authoredFocus = o.focusTrack === undefined ? look.focusTrack : o.focusTrack;
+  const focusTrack = authoredFocus === undefined || authoredFocus === false ? null :
+    require('../index.js').load().KIT.procedural.focusTrack;
+  const focusPlan = focusTrack?.prepare(authoredFocus);
+  const focusCue = focusPlan && focusTrack.at(focusPlan,sceneTime);
+  const focusGrades = focusCue && focusTrack.picture(focusCue);
+  const pictureFocus = focusGrades?.length ? new WeakMap() : null;
+  const targetIndex = pictureFocus && TargetSelectors.index(world);
+  const baseSubject = protection?.bind(world);
+  function focusedRule(target,base) {
+    if (pictureFocus.has(target)) return pictureFocus.get(target);
+    let amount=0,bias=0;
+    for (const grade of focusGrades) if (TargetSelectors.matches(grade.select,target)) {
+      amount+=grade.amount;
+      bias-=grade.amount*grade.pivot;
+    }
+    const rule = amount || bias ? {contrast:1,fogScale:1,...base,focusAmount:amount,focusBias:bias} : base;
+    pictureFocus.set(target,rule);
+    return rule;
+  }
+  const subject = pictureFocus ? i=>{
+    if (i<0 || i>=world.count) return null;
+    return focusedRule(targetIndex.row(i),baseSubject?.(i));
+  } : baseSubject;
   const viewStaging = o[probeCamera] ? null : CameraStaging.prepare(o.cameraStaging ?? look.cameraStaging);
   const framing = o.samples || o.captureCoverage || o.reflectionPlane ? null : viewStaging;
   const focusBands = o.depthOfField === false ? [] : framing?.depthOfField ?? [];
@@ -1101,7 +1124,7 @@ function renderFrame(world, o, preparedPalettes) {
     eye,V,W,H,focal,ortho,near,rayAt,time:t,interfaceTime:o.interfaceTime,override:o.spriteAtlasMode,sun,
     reconstructed, spriteLOD,
     objectDither: anchorSpaces.has('object'), shutterTime: shutterRows?.atlasTime,
-    subject: protection?.match,
+    subject: pictureFocus ? target=>focusedRule(target,protection?.match(target)) : protection?.match,
     visibility:(position)=>(cloudShadow?.(...position)??1)*(exposure?.light?.(...position)??1),
     clip:geometryClip, captureIds:Boolean(deep||captureFogOwners), artScale:o.artGridScale || 1,
     budgets:!reflectionPlane && !probeView && (o.spriteAtlasBudgets === true ? world.spriteAtlasBudgets :
@@ -1836,10 +1859,14 @@ function renderFrame(world, o, preparedPalettes) {
     if (counters) counters.peakDeferredFragments = Math.max(counters.peakDeferredFragments, deferredCount);
   }
   const foreground = direction?.foreground;
-  const contrastColor = (foreground || protection) && [0,0,0];
+  const contrastColor = (foreground || protection || pictureFocus) && [0,0,0];
   const targetFog = (amount, rule) => rule && rule.fogScale !== 1 ? clamp(amount*rule.fogScale,0,1) : amount;
+  const hasSubjectColor = rule => rule && (rule.contrast !== 1 || rule.focusAmount || rule.focusBias);
   function subjectColor(rule, r, g, b) {
-    return ArtDirection.gradeContrast(r,g,b,rule.contrast-1,rule.pivot,contrastColor);
+    if (rule.contrast !== 1)
+      [r,g,b] = ArtDirection.gradeContrast(r,g,b,rule.contrast-1,rule.pivot,contrastColor);
+    return rule.focusAmount || rule.focusBias ?
+      ArtDirection.gradeContrast(r,g,b,rule.focusAmount,0,contrastColor,rule.focusBias) : contrastColor;
   }
   const foregroundDepth = z => z - (eyeD-dist);
   function composite(p, i, z, dn, a, pr, pg, pb, wd, emits, highlight, paletteId, detailParticle, projected, coat, glass, mark,
@@ -1866,7 +1893,7 @@ function renderFrame(world, o, preparedPalettes) {
     }
     if (foreground && wd && (i < 0 ? !sprite?.emission : !(d[i*16+11] & 32)))
       [pr,pg,pb] = foreground(foregroundDepth(opticalDepth),pr,pg,pb,contrastColor);
-    if (rule && rule.contrast !== 1 && (i < 0 ? !sprite?.emission : !(d[i*16+11] & 32)))
+    if (hasSubjectColor(rule) && (i < 0 ? !sprite?.emission : !(d[i*16+11] & 32)))
       [pr,pg,pb] = subjectColor(rule,pr,pg,pb);
     environmentPasses?.fragment?.(p, i, a, pr, pg, pb, reflected, wd && a > .5);
     if (deep) {
@@ -3038,7 +3065,7 @@ function renderFrame(world, o, preparedPalettes) {
         if (lookPass) lookPass.fragment(p, retainLayers ? contributions.weight(p) : 1 - (surfaceOverlay?.[p * 4 + 3] || 0),
           lookPass.mark, true);
         const protectionRule = subject?.(i);
-        if (protectionRule && protectionRule.contrast !== 1 && !(d[i*16+11] & 32))
+        if (hasSubjectColor(protectionRule) && !(d[i*16+11] & 32))
           lit = subjectColor(protectionRule,lit[0],lit[1],lit[2]);
         const kf = world.fog.max > 0 && world.fog.start < 1
           ? targetFog(sstep(world.fog.start,1,dep[p])*world.fog.max*(exposure?.fog?.(HX[p],HY[p],HZ[p])??1),protectionRule) : 0;
@@ -3205,7 +3232,7 @@ function renderFrame(world, o, preparedPalettes) {
         if (foreground && !(d[sprOwner?.[q]*16+11] & 32))
           c = foreground(foregroundDepth(depth),c[0],c[1],c[2],contrastColor);
         const rule = subject?.(sprOwner[q]);
-        if (rule && rule.contrast !== 1 && !(d[sprOwner[q]*16+11] & 32))
+        if (hasSubjectColor(rule) && !(d[sprOwner[q]*16+11] & 32))
           c = subjectColor(rule,c[0],c[1],c[2]);
         if (rayMedia) c = rayMedia.shade(q, depth, c, true, rule?.fogScale);
         if (fogScales || silhouetteMask) subjectPixel(q,rule);
@@ -3775,6 +3802,8 @@ function renderFrame(world, o, preparedPalettes) {
   if (paletteTrace) paletteTrace.steps.push(...paletteTrace.mask);
   const frame = finishLook({
     w: W, h: H, px, rgb: out, drawn, use,
+    ...(focusCue && {focusTrack:{id:focusPlan.id,subject:focusCue.to?.id ?? null,
+      from:focusCue.from?.id ?? null,weight:focusCue.weight}}),
     ...(strand?.inspected && { strandPixel: strand.inspected }),
     ...(deepFrame && { deep: deepFrame }),
     ...(objectMattes && {objectMattes}),

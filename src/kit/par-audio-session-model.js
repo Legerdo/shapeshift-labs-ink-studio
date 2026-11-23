@@ -149,7 +149,7 @@
     check(choices.every((row,i)=>i===0 || choices[i-1].lane!==row.lane || choices[i-1].to<=row.from),
       'Comp selections on one lane may not overlap');
     const desk=clone(session.mixer ?? {output:'master',strips:{master:{}}});
-    check(fields(desk,['output','strips','processors','taps','tail','peakPolicy']) && id(desk.output),
+    check(fields(desk,['output','strips','processors','taps','tail','peakPolicy','focusTrack']) && id(desk.output),
       'Use a native mixer desk keyed by session lane names');
     const strips=Object.fromEntries(table(desk.strips,48,'mixer strips')), processors=desk.processors ?? {};
     check(get(strips,desk.output) && !sourceLanes.includes(desk.output) && Object.values(strips).every(row=>
