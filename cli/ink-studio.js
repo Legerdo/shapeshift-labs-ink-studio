@@ -1326,6 +1326,7 @@ const CMD = {
         '  traced-lighting <scene> --out asset.json [--plan settings.json --t 0 --samples 32 --bounces 2]',
         '  splat-fit <scene> --plan approvals.json --out asset.json',
         '  render/clip --shot-corrections file.json|off   load or bypass native shot corrections',
+        '  path-ink <scene> --plan look.json --out frame.png [--t 0 | --from 0 --to 2 --fps 12]',
         '  sdf-reference <scene> --out directory [--t 0,1.2 --w 192 --h 120 --samples 32 --bounces 3]',
         '  pose-correctives capture <scene> --plan sculpt.json --t 1 --out correction.json',
         '  pose-correctives review <scene> --out directory [--from 0 --to 2.4 --fps 10]',
@@ -2209,6 +2210,44 @@ const CMD = {
       views:views.map(entry=>({...entry,reference:load(entry.reference),mask:entry.mask && load(entry.mask)}))});
     require('./asset-files.js').json(file,asset);
     console.log('Fitted',asset.report.resized,'splats and omitted',asset.report.omitted,'splats. Wrote',file);
+  },
+  'path-ink'() {
+    if (pos.length!==1 || typeof opt.out!=='string' || !/\.png$/i.test(opt.out) ||
+        opt.plan!==undefined && typeof opt.plan!=='string' || artPixelSize!==undefined && artPixelSize!==1)
+      die('Use path-ink <scene> [--plan look.json] --out frame.png [--t 0 | --from 0 --to 2 --fps 12]');
+    const sequence=opt.to!==undefined || opt.from!==undefined || opt.fps!==undefined;
+    const from=num(sequence?'from':'t',0), fps=num('fps',12), to=num('to',from+1);
+    if (!Number.isFinite(from) || from<0 || from>3600 ||
+        (sequence && (opt.t!==undefined || !Number.isFinite(to) || to<=from || to>3600 ||
+        !Number.isFinite(fps) || fps<1 || fps>60)))
+      die('Path ink needs a finite still time or a forward clip range at 1–60 FPS');
+    const n=sequence ? Math.max(2,Math.round((to-from)*fps)) : 1;
+    const file=outputFile('path-ink.png'), plan=opt.plan && path.resolve(opt.plan);
+    const reportFile=file.replace(/\.png$/i,'')+'.path-ink.json';
+    if ([file,reportFile].some(destination=>destination===path.resolve(pos[0]) || destination===plan))
+      die('Write path ink outputs separately from their inputs');
+    const api=require('./path-ink-render.js');
+    const settings=api.settings({width:num('w',176),height:num('h',128),samples:num('samples',32),
+      bounces:num('bounces',1),steps:num('steps',144),epsilon:num('epsilon',.001),seed:num('trace-seed',1),
+      exposure:num('reference-exposure',1)},n);
+    const world=buildPreview(pos[0],{retainReferenceSdf:true}), camera=clipCamera(world);
+    const pathInk=plan ? JSON.parse(fs.readFileSync(plan,'utf8')) : world.look?.pathInk;
+    if (!pathInk) die('Path ink needs a scene look or --plan');
+    const finish=outputFinish(), frames=[], report=[];
+    for (let i=0;i<n;i++) {
+      const t=from+(sequence ? i/fps : 0);
+      pose(world,t);
+      const frame=api.renderPathInk(world,view({t,...camera?.(sequence ? i/(n-1) : 0),pathInk}),settings);
+      report.push({time:t,...frame.stats});
+      frames.push(finish(frame));
+    }
+    if (sequence) {
+      fs.mkdirSync(path.dirname(file),{recursive:true});
+      PNG.animate(file,frames,fps);
+    } else require('./asset-files.js').write(file,PNG.encode(settings.width,settings.height,frames[0].rgb));
+    require('./asset-files.js').json(reportFile,{format:'ink-studio/path-ink',version:1,settings,
+      ...(sequence && {fps}),frames:report});
+    console.log('Wrote',n,'path ink frame(s) to',file);
   },
   'sdf-reference'() {
     if (pos.length !== 1 || typeof opt.out !== 'string' ||
