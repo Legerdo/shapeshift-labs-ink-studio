@@ -1,13 +1,13 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { format, fields, label, normalize, planSubjectReframe, reframeRaster } = require('./subject-reframe.js');
-const { render } = require('./render.js');
+const { captureScreenFrame } = require('./screen-subjects.js');
 const { write, json } = require('./asset-files.js');
 const PNG = require('./png.js');
 
 const embed = bytes => 'data:image/png;base64,' + bytes.toString('base64');
 
-function run(file, directory, { build, pose, view }) {
+function run(file, directory, hooks) {
   const input = path.resolve(file), plan = JSON.parse(fs.readFileSync(input, 'utf8'));
   if (!fields(plan, ['format', 'version', 'title', 'scene', 'seed', 'controls', 'width', 'height', 'from', 'fps', 'frames', 'smoothing', 'subjects', 'formats']) ||
       plan.format !== format || plan.version !== 1 || typeof plan.scene !== 'string' || !plan.scene.trim() || plan.scene.length > 1024 ||
@@ -22,17 +22,8 @@ function run(file, directory, { build, pose, view }) {
   for (const name of ['index.html', 'paths.json', ...formats.map(item => item.id + '.png')])
     if ([input, scene].includes(path.join(directory, name))) throw new RangeError('Write the reframe separately from its inputs');
 
-  const world = build(scene, seed, { controls });
-  const source = Array.from({ length: frames }, (_, i) => {
-    const t = from + i / fps;
-    const options = view({ w: width, h: height, t });
-    pose(world, t);
-    const { w, h, rgb, alpha, passes } = render(world, {
-      ...options, px: 1, passes: ['objectId', 'materialId'], composite: false, renderGraph: false,
-      renderGrid: false, inspection: false, shutter: false
-    });
-    return { w, h, rgb, alpha, passes };
-  });
+  const world = hooks.build(scene, seed, { controls });
+  const source = Array.from({ length: frames }, (_, i) => captureScreenFrame(world, width, height, from + i / fps, hooks));
   const solution = planSubjectReframe(source, settings);
   for (const frame of source) delete frame.passes;
   solution.title = title;

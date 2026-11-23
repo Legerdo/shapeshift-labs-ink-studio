@@ -1,4 +1,5 @@
 // Fit one constant-scale, pixel-aligned pan per delivery format.
+const { measureScreenSubjects } = require('./screen-subjects.js');
 const format = 'ink-studio/subject-reframe';
 const maxPixels = 262144;
 const maxFrames = 240;
@@ -53,55 +54,6 @@ function normalize(options) {
   for (const rows of [targets, deliveries])
     if (new Set(rows.map(row => row.id)).size !== rows.length) throw new TypeError('Reframe IDs must be unique within each list');
   return { width, height, from, fps, frames, smoothing, subjects: targets, formats: deliveries };
-}
-
-function measure(frame, subjects, w, h) {
-  const { passes, alpha } = frame;
-  const needsObject = subjects.some(subject => subject.select.object !== undefined);
-  const needsMaterial = subjects.some(subject => subject.select.material !== undefined);
-  if (frame.w !== w || frame.h !== h || passes?.w !== w || passes?.h !== h ||
-      (needsObject && (passes.objectId?.length !== w * h || !Array.isArray(passes.objects))) ||
-      (needsMaterial && (passes.materialId?.length !== w * h || !Array.isArray(passes.materials))))
-    throw new TypeError('Subject tracking needs aligned native object and material passes');
-  const { objectId, materialId, objects, materials } = passes;
-  const groups = new Map();
-  for (let i = 0; i < subjects.length; i++) {
-    const { object, material } = subjects[i].select;
-    const objectSlot = object === undefined ? 0 : objects.indexOf(object);
-    const materialSlot = material === undefined ? 0 : materials.indexOf(material);
-    if ((object !== undefined && objectSlot <= 0) || (material !== undefined && materialSlot <= 0)) continue;
-    const key = (objectSlot || 0) + ':' + (materialSlot || 0);
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(i);
-  }
-  const boxes = subjects.map(() => [w, h, 0, 0]);
-  const routes = new Map();
-  for (let p = 0; p < w * h; p++) {
-    if (alpha?.[p] === 0) continue;
-    const object = objectId?.[p] || 0, material = materialId?.[p] || 0;
-    if (!object && !material) continue;
-    const key = object + ':' + material;
-    if (!routes.has(key)) routes.set(key, [
-      ...(object && material ? groups.get(key) ?? [] : []),
-      ...(object ? groups.get(object + ':0') ?? [] : []),
-      ...(material ? groups.get('0:' + material) ?? [] : [])
-    ]);
-    const matches = routes.get(key);
-    if (!matches.length) continue;
-    const x = p % w, y = Math.floor(p / w);
-    for (const i of matches) {
-      const box = boxes[i];
-      box[0] = Math.min(box[0], x);
-      box[1] = Math.min(box[1], y);
-      box[2] = Math.max(box[2], x + 1);
-      box[3] = Math.max(box[3], y + 1);
-    }
-  }
-  return boxes.map((box, i) => ({
-    id: subjects[i].id,
-    box: box[2] ? box : null,
-    sourceEdge: Boolean(box[2] && (box[0] === 0 || box[1] === 0 || box[2] === w || box[3] === h))
-  }));
 }
 
 function intervals(samples, [w, h], [cw, ch], [l, t, r, b]) {
@@ -221,7 +173,7 @@ function planSubjectReframe(frames, options) {
   if (!Array.isArray(frames)) throw new TypeError('Expected an array of native frames with ownership passes');
   const plan = normalize({ ...options, frames: frames.length });
   const { width, height, from, fps, subjects, formats, smoothing } = plan;
-  const samples = Array.from(frames, (frame, i) => ({ time: from + i / fps, targets: measure(frame, subjects, width, height) }));
+  const samples = Array.from(frames, (frame, i) => ({ time: from + i / fps, targets: measureScreenSubjects(frame, subjects, width, height) }));
   return {
     format, version: 1, source: { width, height, from, fps, frames: frames.length }, smoothing, subjects, samples,
     formats: formats.map(delivery => solve(delivery, [width, height], samples, subjects, smoothing))

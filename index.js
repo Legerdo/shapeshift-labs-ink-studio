@@ -167,6 +167,7 @@ module.exports = {
   fitShotLighting: require('./cli/shot-light-fit.js').fitShotLighting,
   fitSharedObjectGrade: require('./cli/shared-object-grade.js').fitSharedObjectGrade,
   planSubjectReframe: require('./cli/subject-reframe.js').planSubjectReframe,
+  findMatchCuts: require('./cli/match-cut.js').findMatchCuts,
   sampleReframe: require('./cli/subject-reframe.js').sampleReframe,
   reframeRaster: require('./cli/subject-reframe.js').reframeRaster,
   createMotionalCoverageHistory: require('./src/motional-coverage.js').history,
