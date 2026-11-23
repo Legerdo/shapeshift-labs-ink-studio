@@ -7,6 +7,22 @@
     check(finite(value,lo,hi),'Invalid transition '+label);
     return value;
   };
+  function compileCadences(value,segments,phrases) {
+    check(Array.isArray(value) && integer(value.length,1,8),'Choose one to eight authored cadence variants');
+    const ids=new Set();
+    return Array.from(value,row=>{
+      check(fields(row,['id','segment','when']) && id(row.id) && !ids.has(row.id) && id(row.segment) &&
+        Object.hasOwn(segments,row.segment) && fields(row.when ?? {},['phase','minDwell','phrase']),
+      'Cadences need unique IDs, known segments and optional phrase conditions');
+      const {phase=[0,1],minDwell=0,phrase}=row.when ?? {};
+      check(Array.isArray(phase) && phase.length===2 && finite(phase[0],0,1) && finite(phase[1],0,1) &&
+        phase[1]>phase[0] && finite(minDwell,0,3600) && (phrase===undefined || phrases.includes(phrase)),
+      'Invalid cadence phrase, phase or dwell condition');
+      ids.add(row.id);
+      const {start,end}=segments[row.segment];
+      return {id:row.id,segment:row.segment,duration:end-start,phase:phase.slice(),minDwell,phrase};
+    });
+  }
   function prepare(sources,spec,assets,host,bank,liveResources,offlineStreams) {
     const live=liveResources!==undefined;
     check(record(sources) && Object.keys(sources).length<=32 && Object.keys(sources).every(id) &&
@@ -86,7 +102,7 @@
     'Stinger rules need a mapped resource and a section in which to withhold it');
     const rules=new Map();
     for (const edge of edges) {
-      check(fields(edge,['from','to','exit','entry','tail','fadeIn','bridge','pickup','commonTone','switchPoints','harmonicBridge']) && known(edge.from) &&
+      check(fields(edge,['from','to','exit','entry','tail','fadeIn','bridge','pickup','commonTone','switchPoints','harmonicBridge','cadences']) && known(edge.from) &&
         known(edge.to) && (edge.bridge===undefined || known(edge.bridge)),'Invalid music transition edge');
       const key=edge.from+'>'+edge.to;
       check(!rules.has(key),'Duplicate music transition edge');
@@ -120,7 +136,14 @@
         const clip=segments[tone.segment];
         numeric(tone.pickup ?? 0,0,Math.min(4,clip.end-clip.start-.001),'common tone pickup');
       }
-      let harmonicBridge;
+      let cadences,harmonicBridge;
+      if (edge.cadences!==undefined) {
+        check(live,'Render branch cadences with music live replay');
+        check(edge.from!==edge.to && edge.exit!==undefined && edge.exit!==null && edge.bridge===undefined &&
+          edge.harmonicBridge===undefined,'Cadences need a distinct edge with an exit marker and no other bridge');
+        const phrases=[edge.from,...(spec.phrasing?.routes?.[edge.from] ?? []).map(row=>row.id)];
+        cadences=compileCadences(edge.cadences,segments,phrases);
+      }
       if (edge.harmonicBridge!==undefined) {
         check(live,'Render a harmonic bridge with music live replay');
         check(!edge.bridge && !tone && edge.from!==edge.to,'Use a harmonic bridge on a distinct edge without an authored pickup');
@@ -132,7 +155,7 @@
         'Every destination phrase needs the harmonic bridge pitched track');
       }
       rules.set(key,{exit,entry,tail,fadeIn,bridge:edge.bridge,pickup,commonTone:tone,
-        ...(harmonicBridge && {harmonicBridge}),...(live && {waitForExit:edge.exit!==undefined})});
+        ...(cadences && {cadences}),...(harmonicBridge && {harmonicBridge}),...(live && {waitForExit:edge.exit!==undefined})});
     }
     if (id(spec.performers?.roomSource)) load(spec.performers.roomSource);
     return {compiled,segments,end,known,memory,routes,recalls,phrasing,stingers,holds,rules};

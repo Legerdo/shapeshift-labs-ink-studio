@@ -186,6 +186,8 @@ as stale. The chosen edge uses the section currently playing on the audio clock.
 
 Use [harmonic bridges](music-harmonic-bridges.md) to generate a playable
 pickup from sounding notes and continue common tones into the next cue.
+Use [branch-aware cadences](music-branch-cadences.md) to choose an authored
+ending that fits the current phrase and the existing exit marker.
 
 Persistent performers use the existing `performers.tracks` identity and desk
 validation. Their admitted notes run through the original gate, phase,
