@@ -1161,6 +1161,7 @@ const CMD = {
         '  shot replay <shot-or-bundle.json> --out <image.png> [--root project | --shot ID]   verify the saved render',
         '  shot approve <scene> [--plan plan.json] --out report.json [--frame N] [--report-only]',
         '  shot grade-match <plan.json> [--out directory]   match chroma from shared objects',
+        '  shot reframe <plan.json> [--out directory]       track safe crops across delivery formats',
         '  shot light-paint <scene> --shot-lighting rig.json --out targets.html [--t seconds] [--w W --h H]',
         '  shot light-fit <scene> --shot-lighting rig.json --targets targets.json --out folder [--evaluations N] [--interactive]',
         '  render <scene.json> --asset-pack <pack-or-bundle.json> [--environment-preset pack/preset]   install and select a reusable look',
@@ -2190,6 +2191,17 @@ const CMD = {
     console.log(warn.length ? 'warnings:\n  ' + warn.join('\n  ') : 'no warnings');
   },
   shot() {
+    if (pos[0] === 'reframe') {
+      if (pos.length !== 2 || Object.keys(opt).some(key => key !== 'out') || opt.out === true)
+        die('Use shot reframe <plan.json> [--out directory]');
+      const directory = outputFile('subject-reframe');
+      const report = require('./subject-reframe-command.js').run(pos[1], directory, { build, pose, view });
+      for (const delivery of report.formats)
+        console.log(delivery.label + ': ' + delivery.safeFrames + '/' + report.source.frames + ' safe frames (' +
+          delivery.centerSafeFrames + ' with center crop)');
+      console.log('Wrote', directory);
+      return;
+    }
     if (pos[0] === 'grade-match') {
       if (pos.length !== 2 || Object.keys(opt).some(key => key !== 'out') || opt.out === true)
         die('Use shot grade-match <plan.json> [--out directory]');
