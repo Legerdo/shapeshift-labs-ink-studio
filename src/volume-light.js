@@ -290,9 +290,10 @@ const VolumeLight = (() => {
     number(maxGap, .001, 10, 'Volume history time gap');
     let last;
     return {
-      filter(color, depth, time, key) {
+      filter(color, depth, time, key, { owners,boundaries } = {}) {
         if (last && last.key === key && time > last.time && time - last.time <= maxGap && last.depth.length === depth.length) {
           for (let p = 0; p < depth.length; p++) {
+            if (owners?.[p] !== last.owners?.[p] || boundaries?.[p] || last.boundaries?.[p]) continue;
             const dz = depth[p] === last.depth[p] ? 0 : Math.abs(depth[p] - last.depth[p]);
             // A sharp change in transmittance signals disocclusion or a fast density change.
             if (dz > depthTolerance || Math.abs(color[p * 4 + 3] - last.color[p * 4 + 3]) > .18) continue;
@@ -302,7 +303,8 @@ const VolumeLight = (() => {
             }
           }
         }
-        last = { time, key, depth: depth.slice(), color: color.slice() };
+        last = { time, key, depth: depth.slice(), color: color.slice(),
+          owners: owners?.slice(), boundaries: boundaries?.slice() };
         return color;
       },
       clear() { last = undefined; }

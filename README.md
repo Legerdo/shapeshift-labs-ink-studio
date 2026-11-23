@@ -362,6 +362,8 @@ Update nearby diffuse probes as emissive splats, painted reflectors, and area li
 
 Trace selected sculpt frames with indirect light and transmission, then inspect coverage, shading and sample spacing beside the native render. [Offline SDF reference](docs/sdf-reference.md)
 
+Reconstruct coarse bounded fog with native depth and object edges, and compare it with full-resolution fog on the same shot. [Coarse fog reconstruction](docs/scene-optics.md#reconstruct-coarse-fog-on-the-art-grid)
+
 Edit named cues and parameter lanes against pinned passes, then reuse the effect as a graph group. [Editable effect clips](docs/effect-clips.md)
 Map textures onto tapered curves and route along, across, tangent, and coverage planes into the raster graph. [Curve-to-raster maps](docs/curve-raster-map.md)
 
@@ -855,6 +857,7 @@ The CLI and Node `render()` use the CPU renderer. Use the [browser renderer](doc
 | `shot light-approve <plan.json> [--out directory]` | Fit a shared light rig to native-size readability and swatch checks and report trade-offs. |
 | `bounce-probes review <scene> --out directory` | Compare baked and dynamic probe fill at native art resolution. |
 | `sdf-reference <scene> --out directory --t 0,1.4` | Trace selected SDF frames and review differences from the native splats. |
+| `fog-reconstruction review <scene> --out directory` | Compare depth-only, object-guided and full-resolution fog. |
 | `scene-replay <recording> --out frame.png` | Sample a recording or regenerate its web embed with `--embed`. |
 | `project pack <scene.json> --out project.json` | Package an editable diorama and its dependencies for the editor, browser, and CLI. |
 | `project inspect <project.json>` | Show project revisions, toolkit version, and retained files. |
@@ -927,7 +930,7 @@ Common rendering controls:
 | `--composite file.json\|off` | Set independent world and screen-layer resolutions. See [mixed-resolution compositing](docs/mixed-resolution.md). |
 | `--render-graph file.json\|off` | Order and scope screen-space passes. See [the render graph](docs/render-graph.md). |
 | `--feedback-fps n` and `--feedback-cuts t1,t2` | Set a fixed feedback replay rate and explicit scene-time resets for clips and sheets. |
-| `--volume-scale`, `--volume-steps`, `--volume-jitter` | Override the atmosphere volume's sampling settings. |
+| `--volume-scale`, `--volume-reconstruction`, `--volume-steps`, `--volume-jitter` | Override the atmosphere volume's sampling and reconstruction settings. |
 | `--seed` | Override the scene seed. |
 | `--colored` | Use palette-aware smoothing of silhouettes and body-colored contours. |
 | `--raw` | Bypass palette styling. |

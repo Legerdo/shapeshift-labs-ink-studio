@@ -4,6 +4,7 @@ const ArtDirection = require('../src/art-direction.js');
 const ReflectionDetail = require('../src/reflection-detail.js');
 const { airTransmission } = require('../src/sky-environment.js');
 const { rays: cameraRays } = require('../src/camera-lens.js');
+const { surfaceGuide } = require('./fog-reconstruction.js');
 
 function surfacePoint(ray, normal, x, y, z, axialDepth, radius) {
   const { origin, direction, axial } = ray;
@@ -134,7 +135,9 @@ function reflectionSampler(planes, render, view, eye, scale, { quality, width, h
 
 function atmosphereQuality(value = {}) {
   const { scale = 1, depthTolerance = .22, steps = 64, stepScale = 1, samples = 1, jitter = 'off',
-    skip = true, cacheBounds = true, seed = 0, stats = false } = value;
+    skip = true, cacheBounds = true, seed = 0, stats = false, reconstruction = 'object' } = value;
+  if (reconstruction !== 'object' && reconstruction !== 'depth')
+    throw new RangeError('Volume reconstruction must be object or depth');
   if (!Number.isSafeInteger(scale) || scale < 1 || scale > 4 ||
       !Number.isFinite(depthTolerance) || depthTolerance < 0 ||
       !Number.isSafeInteger(steps) || steps < 4 || steps > 256 ||
@@ -142,7 +145,7 @@ function atmosphereQuality(value = {}) {
       !Number.isSafeInteger(samples) || samples < 1 || samples > 4 || !['off', 'blue-noise', 'spatiotemporal'].includes(jitter) ||
       !Number.isSafeInteger(seed) || typeof skip !== 'boolean' || typeof cacheBounds !== 'boolean' || typeof stats !== 'boolean')
     throw new RangeError('Invalid atmosphere quality options');
-  return { scale, depthTolerance, maxSteps: steps, stepScale, samples, jitter, skip, cacheBounds, seed, stats };
+  return { scale, depthTolerance, maxSteps: steps, stepScale, samples, jitter, skip, cacheBounds, seed, stats, reconstruction };
 }
 
 const noiseTiles = new Map();
@@ -284,7 +287,7 @@ function mediaSampler(volumes, water, rayAt, width, horizon, options, aerial) {
     for (let c=0;c<matte.length;c++) matte[c] += value[c]*amount/samples;
   };
   let opacity = 0, fogCoverage = 0, cloudCoverage = 0, fogThrough = 1;
-  const stats = { rays: 0, fallbackRays: 0, depthSamples: 0 };
+  const stats = { rays: 0, fallbackRays: 0, depthSamples: 0, mode: 'layered' };
   function shade(pixel, depth, rgb, geometry = true, fogScale = 1) {
     if (options.counters) options.counters.mediaQueries++;
     let ray = rays[pixel];
@@ -386,7 +389,8 @@ function mediaSampler(volumes, water, rayAt, width, horizon, options, aerial) {
     transfer, reflected: () => reflected, matte: () => matte, visibility: () => visibility };
 }
 
-function applyAtmosphere(volumes, col, depths, rayAt, W, H, horizon, quality, time, media, capture, history, viewKey, fogScales) {
+function applyAtmosphere(volumes, col, depths, rayAt, W, H, horizon, quality, time, media, capture, history, viewKey,
+  fogScales, owners) {
   const light = [0, 0, 0, 1], sample = [0, 0, 0, 1];
   const fields = volumes.some(volume => volume.type === 'field' || volume.densityField || volume.depthBand?.sample || volume.paletteField) ||
     (media?.paletteLocals && volumes.some(volume => volume.lit));
@@ -401,7 +405,11 @@ function applyAtmosphere(volumes, col, depths, rayAt, W, H, horizon, quality, ti
   const frame = temporal ? Math.floor(time * 60) : 0;
   const phaseShift = (frame * .61803398875) % 1;
   const samples = fields ? quality.samples : 1;
-  const stats = { rays: 0, fallbackRays: 0 };
+  const { scale, depthTolerance, reconstruction } = quality;
+  const mode = scale === 1 ? 'native' : reconstruction;
+  const stats = { mode, rays: 0, coarseRays: 0, fallbackRays: 0, boundaryRays: 0, boundaryPixels: 0,
+    reconstructedPixels: 0, boundaryRejectedTaps: 0 };
+  const guide = mode === 'object' ? surfaceGuide(W,H,depths,owners,fogScales,depthTolerance) : null;
   const fog = capture ? new Float32Array(W * H) : null;
   function solve(x, y, depth) {
     const { origin, direction, axial } = rayAt(x + .5, y + .5);
@@ -419,39 +427,60 @@ function applyAtmosphere(volumes, col, depths, rayAt, W, H, horizon, quality, ti
     }
   }
 
-  const { scale, depthTolerance } = quality, cw = Math.ceil(W / scale), ch = Math.ceil(H / scale);
-  const low = scale > 1 ? new Float32Array(cw * ch * 4) : null;
-  const lowDepth = low ? new Float32Array(cw * ch) : null;
-  const lowFog = low && fogScales ? new Float64Array(cw*ch) : null;
+  const cw = Math.ceil(W / scale), ch = Math.ceil(H / scale);
+  const TransferBuffer = guide ? Float64Array : Float32Array;
+  const low = scale > 1 ? new TransferBuffer(cw * ch * 4) : null;
+  const centers = low && new Int32Array(cw * ch);
+  const coarseX = guide && new Int32Array(W).fill(-1), coarseY = guide && new Int32Array(H).fill(-1);
   if (low) for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) {
     const rx = Math.min(W - 1, x * scale + (scale >> 1)), ry = Math.min(H - 1, y * scale + (scale >> 1));
     const p = y * cw + x;
-    lowDepth[p] = depths[ry * W + rx];
-    if (lowFog) lowFog[p] = fogScales[ry*W+rx];
-    solve(rx, ry, lowDepth[p]);
+    const i = ry*W+rx;
+    centers[p] = i;
+    if (coarseX) {
+      coarseX[rx] = x;
+      coarseY[ry] = y;
+    }
+    solve(rx, ry, depths[i]);
     low.set(light, p * 4);
   }
+  stats.coarseRays = stats.rays;
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const i = y * W + x, p = i * 3;
+    const edge = guide?.boundaries[i];
+    if (edge) stats.boundaryPixels++;
     let weight = 0;
-    if (low) {
+    const center = coarseX && coarseX[x]>=0 && coarseY[y]>=0 ? coarseY[y]*cw+coarseX[x] : -1;
+    if (center>=0) {
+      for (let c=0;c<4;c++) light[c] = low[center*4+c];
+      weight = 1;
+    } else if (low && !edge) {
       light.fill(0);
       const u = (x - (scale >> 1)) / scale, v = (y - (scale >> 1)) / scale;
       const ix = Math.floor(u), iy = Math.floor(v);
       for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) {
         const bx = Math.max(0, Math.min(cw - 1, ix + dx)), by = Math.max(0, Math.min(ch - 1, iy + dy));
-        const j = by * cw + bx, guide = lowDepth[j], depth = depths[i];
-        const delta = guide === depth ? 0 : Math.abs(guide - depth);
-        if (delta > depthTolerance || lowFog && lowFog[j] !== fogScales[i]) continue;
-        const w = (1 - Math.abs(u - (ix + dx))) * (1 - Math.abs(v - (iy + dy))) / (1 + delta * 5);
+        const j = by * cw + bx, k = centers[j], depth = depths[i];
+        const delta = depths[k] === depth ? 0 : Math.abs(depths[k] - depth);
+        const spatial = (1 - Math.abs(u - (ix + dx))) * (1 - Math.abs(v - (iy + dy)));
+        if (!spatial || delta > depthTolerance || fogScales?.[k] !== fogScales?.[i]) continue;
+        if (guide && (owners?.[i] !== owners?.[k] || !guide.connected(i,k))) {
+          stats.boundaryRejectedTaps++;
+          continue;
+        }
+        const w = spatial / (1 + delta * 5);
         for (let c = 0; c < 4; c++) light[c] += low[j * 4 + c] * w;
         weight += w;
       }
+      if (weight) stats.reconstructedPixels++;
     }
     if (weight) for (let c = 0; c < 4; c++) light[c] /= weight;
     else {
       solve(x, y, depths[i]);
-      if (low) stats.fallbackRays += samples;
+      if (low) {
+        stats.fallbackRays += samples;
+        if (edge) stats.boundaryRays += samples;
+      }
     }
     if (accumulation) accumulation.set(light, i * 4);
     else {
@@ -461,7 +490,7 @@ function applyAtmosphere(volumes, col, depths, rayAt, W, H, horizon, quality, ti
     }
   }
   if (accumulation) {
-    history.filter(accumulation, depths, time, viewKey);
+    history.filter(accumulation, depths, time, viewKey, guide ?? undefined);
     for (let i = 0; i < W * H; i++) {
       const rgba = i*4;
       const opacity = 1-accumulation[rgba+3], styled = quality.bands ? quality.bands(opacity) : opacity;
