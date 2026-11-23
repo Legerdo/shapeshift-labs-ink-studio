@@ -401,6 +401,8 @@ Split a recording into tonal and transient layers, then move or retune them in o
 
 Make room for a foreground part by attenuating the frequencies it shares with a competing strip. Set a ceiling for the cut and audition it in context. [Spectral sidechain](docs/spectral-sidechain.md)
 
+Align shared transients across raw microphone captures and play the same take from close through room perspective. [Automatic multisample alignment](docs/multisample-session-alignment.md)
+
 Pin the same headphone impulse dataset for live audio and deterministic headless spatialization. [Pinned binaural profiles](docs/pinned-binaural.md)
 
 Shape the bass, mids, and treble an emitter sends toward the listener as its body rotates. [Directional sound emitters](docs/directional-audio.md)

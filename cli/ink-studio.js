@@ -1385,7 +1385,7 @@ const CMD = {
         '  music instrument analyze|audition|build recipe.json --out path   turn a take bank into labeled playable zones',
         '  music instrument discover|keep-discovery file.json [selection.json] --out dir',
         '  music instrument workshop|audition-workshop|keep-workshop file.json [settings.json] --out dir',
-        '  music instrument analyze-session|build-session recipe.json [settings.json] --out dir',
+        '  music instrument align-session|analyze-session|build-session recipe.json [settings.json] --out dir',
         '  music instrument audition-session|audition-session-takes recipe.json [settings.json] --out dir',
         '  music instrument fit|audition-fit recipe.json --out dir   fit and audition editable instruments from a recording',
         '  music deliver recipe.json --out directory [--strict]   print BWF stems, M&E, loops, cue sheet and editorial timeline',
