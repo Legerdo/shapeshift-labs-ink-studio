@@ -851,6 +851,7 @@
           }
           for (const binding of o.meshBindings ?? []) binding.pose(Mx);
           for (const binding of o.curveBindings ?? []) binding.pose(W, { bones: Mx, time: t, dt, rows });
+          if (o.correctPose) an.bones=o.correctPose(Mx);
           return true;
         }
       };

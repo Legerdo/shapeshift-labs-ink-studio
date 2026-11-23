@@ -260,6 +260,17 @@ function build(id, seedOverride, { paint = true, retainSdf = false, retainRefere
       (w.pixAnchors = lib().KIT.pixel.anchors)); // (colour per pixel: its patterns, to be called for each pixel; where edge sprites stand)
   w.buildMs = Date.now() - t0;
   w.id = s.id;
+  if (opt['pose-correctives']!==undefined) {
+    const editor=lib().KIT.poseCorrectives.forWorld(w), source=opt['pose-correctives'];
+    if (source==='off') editor?.set([]);
+    else {
+      if (typeof source!=='string' || !editor) die('--pose-correctives needs a patch JSON file and a puppet rig');
+      const file=path.resolve(source);
+      shot?.dependency(file);
+      const asset=JSON.parse(fs.readFileSync(file,'utf8'));
+      editor.set(Array.isArray(asset) ? asset : [asset]);
+    }
+  }
   if (s.lookPreviewPacks !== undefined) w.lookPreviewPacks = s.lookPreviewPacks;
   w.name = s.name;
   w.clock = 0;
@@ -1188,6 +1199,9 @@ const CMD = {
         '  bounce-probes bake <scene> [--bounce-probes settings.json] --out probes.json',
         '  bounce-probes review <scene> --out directory [--from 0 --to 3 --fps 12 --w 184 --h 112]',
         '  sdf-reference <scene> --out directory [--t 0,1.2 --w 192 --h 120 --samples 32 --bounces 3]',
+        '  pose-correctives capture <scene> --plan sculpt.json --t 1 --out correction.json',
+        '  pose-correctives review <scene> --out directory [--from 0 --to 2.4 --fps 10]',
+        '  render/clip/atlas --pose-correctives patch.json|off   load or bypass puppet corrective sculpts',
         '  render/clip --volume-scale 3 --volume-reconstruction object|depth   choose a coarse fog reconstruction',
         '  fog-reconstruction review <scene> --out directory [--subject object-id --volume-scale 4 --from 0 --to 2.4 --fps 10]',
         '  render/clip --dynamic-bounce off   reuse the baked probes without sampling moving sources',
@@ -1994,6 +2008,29 @@ const CMD = {
       seed:num('trace-seed',1),exposure:num('reference-exposure',1) });
     const report = api.review(buildPreview(pos[0],{ retainReferenceSdf:true }),directory,{ ...settings,pose,view });
     console.log('Traced',report.frames.length,'native reference frames. Wrote',directory);
+  },
+  'pose-correctives'() {
+    const [action,id]=pos;
+    if (pos.length!==2 || !['capture','review'].includes(action) || typeof opt.out!=='string')
+      die('Use pose-correctives capture <scene> --plan sculpt.json --out correction.json or pose-correctives review <scene> --out directory');
+    const world=buildPreview(id), editor=lib().KIT.poseCorrectives.forWorld(world);
+    if (!editor || world.anim?.stateful) die('Pose corrective authoring needs a seekable puppet rig');
+    if (action==='capture') {
+      if (typeof opt.plan!=='string') die('Pose corrective capture needs --plan sculpt.json');
+      const time=num('t',0), file=outputFile('pose-corrective.json'), plan=path.resolve(opt.plan);
+      if (!Number.isFinite(time) || time<0) die('Pose corrective capture needs a finite nonnegative time');
+      if (file===plan || file===path.resolve(id)) die('Write the corrective separately from the sculpt plan and scene');
+      pose(world,time);
+      const asset=editor.capture(JSON.parse(fs.readFileSync(plan,'utf8')));
+      require('./asset-files.js').json(file,{...asset,sourceTime:time});
+      console.log('Captured',asset.rows.length,'corrective splats. Wrote',file);
+      return;
+    }
+    if (artPixelSize!==undefined && artPixelSize!==1) die('Pose corrective review captures native art pixels');
+    const directory=outputFile('pose-corrective-review');
+    const report=require('./pose-corrective-review.js').review(world,editor,directory,
+      { pose,view,width:num('w',140),height:num('h',112),from:num('from',0),to:num('to',2.4),fps:num('fps',10) });
+    console.log('Compared',report.samples.length,'corrective poses. Wrote',directory);
   },
   'fog-reconstruction'() {
     const [action,id]=pos;

@@ -460,6 +460,8 @@ Use [procedural bodies](docs/procedural-body.md) to drive a branching creature w
 
 Use [pose blocking and the pose shelf](docs/pose-blocking.md) to hold named story poses, draft in-betweens, and apply reusable poses to a puppet. The `pose-review` command checks the same landmarks as silhouettes at the size and angles of a directional sprite atlas.
 
+Use [pose-space corrective sculpts](docs/pose-correctives.md) to repair a posed silhouette with editable brush strokes. Named joint rotations blend the correction in live WebGL, headless rendering, and sprite atlases.
+
 Use [Motion Review](docs/motion-review.md) to inspect loop pops, spacing spikes, arc kinks, and foot drift on solved puppet motion. Audition one beat at a time and apply, mute, or remove corrective layers.
 
 Use [clip sequencing](docs/clip-sequence.md) to trim and retime instances, inspect handoffs, and audition Once, Loop, or Travel loop playback. Keys and cues follow their clip instances through timing changes.
@@ -864,6 +866,8 @@ The CLI and Node `render()` use the CPU renderer. Use the [browser renderer](doc
 | `atlas <scene> --directions 8` | Export an RGBA atlas with registered pivots and optional relighting maps. |
 | `atlas <scene> --adaptive-views --view-review` | Allocate views by silhouette, gap and protected-detail error, with a held-out orbit comparison. |
 | `pose-review <scene> --directions 8` | Render named poses and breakdowns as color and silhouette tiles at sprite resolution. |
+| `pose-correctives capture <scene> --plan sculpt.json --t 1.1 --out correction.json` | Save a sculpt made at the chosen joint pose. |
+| `pose-correctives review <scene> --out directory` | Scrub the original rig, corrected rig, and exported sprite in sync. |
 | `motion-review <scene> [--finding kind-or-id]` | Report motion findings, focus ranges, and evidence from a scene that exposes Motion Review. |
 | `clip-sequence <scene> [--handoff 0]` | Report clip instances, retimed keys and cues, and measured handoffs. |
 | `authored-contacts <scene> [--at seconds]` | Report authored contact ranges, transfer timing, and optional pose evidence. |
