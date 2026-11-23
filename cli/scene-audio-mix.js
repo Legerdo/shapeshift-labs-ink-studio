@@ -90,6 +90,19 @@ function contextualFilter(points, rate, parametric) {
   }};
 }
 
+// Taps inherit the source feed and its admission in the delayed sample range.
+function* arrivals(voices) {
+  for (const voice of voices) {
+    yield voice;
+    for (const {lag,point} of voice.reflections ?? []) {
+      const admissions = voice.admissions?.map(span=>({...span,first:span.first+lag,end:span.end+lag,
+        ...(span.fadeFrom!==undefined&&{fadeFrom:span.fadeFrom+lag})}));
+      yield {...voice,first:voice.first+lag,end:voice.end===undefined?undefined:voice.end+lag,
+        points:[point],admissions,reflection:true};
+    }
+  }
+}
+
 function sumVoices(voices, resolve, { start, end, sampleRate, gain = 1, cues, parametric }, buses = stereo) {
   const count = end - start;
   if (!Number.isSafeInteger(count) || count < 1 || count * 2 > WAV.maxSamples)
@@ -97,7 +110,7 @@ function sumVoices(voices, resolve, { start, end, sampleRate, gain = 1, cues, pa
   const stems = new Map(buses.map(name => [name, new Float32Array(count * 2)]));
   const statistics = Object.fromEntries(buses.map(name => [name, { voices: 0, peak: 0 }]));
   let work = 0;
-  for (const { stem, ...voice } of voices) {
+  for (const { stem, ...voice } of arrivals(voices)) {
     const spans = voice.admissions;
     if (spans && !spans.some(span=>span.end>start&&span.end>span.first)) continue;
     if (voice.end !== undefined && voice.end <= start) continue;
@@ -113,8 +126,9 @@ function sumVoices(voices, resolve, { start, end, sampleRate, gain = 1, cues, pa
     const length = spans ? spans.reduce((sum,span)=>sum+Math.max(0,Math.min(span.end,last)-Math.max(span.first,begin)),0) : last-begin;
     work += length * Math.max(2, source.channels) * (1 + (tone?.stages ?? 0));
     if (work > 240e6) throw new RangeError('Scene soundtrack exceeds its mixing work budget');
-    statistics[stem].voices++;
-    if (cues) {
+    if(voice.reflection)statistics[stem].reflections=(statistics[stem].reflections??0)+1;
+    else statistics[stem].voices++;
+    if (cues&&!voice.reflection) {
       const source=typeof voice.asset==='string' ? voice.asset : stem;
       for (const span of spans??[{first,end:last}]) {
         const fromSample=Math.max(first,span.first), toSample=Math.min(last,span.end);

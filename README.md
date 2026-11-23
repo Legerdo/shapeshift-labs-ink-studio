@@ -387,6 +387,8 @@ Named clip markers can drive transitions, puppet contacts, sound cues, and prese
 
 Bind audio cues to scene emitters, material contacts, and simulation events with listener-relative attenuation and occlusion. [Spatial audio and event cues](docs/spatial-audio.md)
 
+Trace the first audible bounces off room geometry and finite panels in live and recorded mixes. [Geometry-driven early reflections](docs/early-reflections.md)
+
 <!-- include: examples/puppet.js -->
 
 ```js

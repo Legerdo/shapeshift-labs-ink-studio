@@ -94,7 +94,7 @@ export function createSpatialAudioPlayer(context, {
     }
   }
   function disconnect(row){
-    for(const node of row.nodes??[])node.disconnect();
+    for(const branch of row.branches??[])for(const node of branch.nodes)node.disconnect();
   }
   function stop(row,fade=false){
     if(voices.get(row.voice.id)===row)voices.delete(row.voice.id);
@@ -103,16 +103,18 @@ export function createSpatialAudioPlayer(context, {
       (configured?policy.stealFade:smoothing*3):0;
     if(tail){
       while(retiring.size>=policy.maxVoices)stop(retiring.values().next().value);
-      const param=row.gain.gain;
-      if(configured){
-        if(param.cancelAndHoldAtTime)param.cancelAndHoldAtTime(now);
-        else parameter(param,param.value,now,true);
-        param.linearRampToValueAtTime(0,now+tail);
-      }else parameter(param,0,now);
+      for(const branch of row.branches)if(!branch.ended){
+        const param=branch.gain.gain;
+        if(configured){
+          if(param.cancelAndHoldAtTime)param.cancelAndHoldAtTime(now);
+          else parameter(param,param.value,now,true);
+          param.linearRampToValueAtTime(0,now+tail);
+        }else parameter(param,0,now);
+      }
       retiring.add(row);
     }
     else retiring.delete(row);
-    row.source.stop(now+tail);
+    for(const branch of row.branches)if(!branch.ended)branch.source.stop(now+tail);
     if(!tail)disconnect(row);
   }
   function reset(){
@@ -122,65 +124,85 @@ export function createSpatialAudioPlayer(context, {
     inspection=Object.freeze({selected:[],rejected:[]});
     previousTime=-Infinity;
   }
+  function branch(live, buffer, scheduled) {
+    const when=Math.max(context.currentTime,scheduled), late=when-scheduled;
+    let offset=live.offset+late*live.rate;
+    const remaining=live.duration===undefined?undefined:live.duration-late;
+    if(live.mode==='loop')offset%=buffer.duration;
+    if(offset>=buffer.duration||remaining!==undefined&&remaining<=0)return;
+    const source=context.createBufferSource(), low=context.createBiquadFilter(), high=context.createBiquadFilter(),
+      filter=context.createBiquadFilter(), gain=context.createGain();
+    source.buffer=buffer;
+    source.loop=live.mode==='loop';
+    source.playbackRate.value=live.rate;
+    low.type='lowshelf';low.frequency.value=Math.min(250,context.sampleRate*.1);
+    high.type='highshelf';high.frequency.value=Math.min(2600,context.sampleRate*.4);
+    filter.type='lowpass';filter.Q.value=-3;
+    source.connect(low);low.connect(high);high.connect(filter);
+    const nodes=[source,low,high,filter,gain];
+    let tail=filter, tone;
+    if(live.processing){
+      const highpass=context.createBiquadFilter(), lowpass=context.createBiquadFilter();
+      highpass.type='highpass';lowpass.type='lowpass';
+      highpass.Q.value=lowpass.Q.value=-3.01029995664;
+      const peaks=Array.from({length:4},()=>{
+        const node=context.createBiquadFilter();
+        node.type='peaking';
+        return node;
+      });
+      for(const node of [highpass,...peaks,lowpass]){
+        tail.connect(node);nodes.push(node);tail=node;
+      }
+      tone={highpass,peaks,lowpass};
+    }
+    tail.connect(gain);
+    let panner;
+    if(live.position){
+      panner=context.createPanner();
+      panner.panningModel=panning;
+      panner.rolloffFactor=0;
+      gain.connect(panner);panner.connect(output(live));nodes.push(panner);
+    }else gain.connect(output(live));
+    return {voice:live,source,low,high,filter,gain,panner,nodes,tone,started:when,offset,remaining};
+  }
+
   function start(voice,at){
-    const row={voice,when:at+voice.delay+(voice.startDelay??0)};
+    const row={voice,when:at+voice.delay+(voice.startDelay??0),branches:[]};
     voices.set(voice.id,row);
     row.pending=asset(voice.asset).then(buffer=>{
       if(disposed||voices.get(voice.id)!==row)return;
-      const live=row.voice, when=Math.max(context.currentTime,row.when), late=when-row.when;
-      let offset=live.offset+late*live.rate;
-      const remaining=live.duration===undefined?undefined:live.duration-late;
-      if(live.mode==='loop')offset%=buffer.duration;
-      if(offset>=buffer.duration||remaining!==undefined&&remaining<=0){
+      const live=row.voice;
+      row.direct=branch(live,buffer,row.when);
+      if(row.direct)row.branches.push(row.direct);
+      for(const tap of live.reflections??[]){
+        const {gain,cutoff,apparentSource}=tap;
+        const echo=branch({...live,gain,cutoff,apparentSource,bands:{low:gain,mid:gain,high:gain}},buffer,row.when+tap.delay);
+        if(echo)row.branches.push(echo);
+      }
+      let left=row.branches.length;
+      if(!left){
         voices.delete(live.id);
         if(live.mode==='clip')remember(live.id);
         return;
       }
-      const source=context.createBufferSource(), low=context.createBiquadFilter(), high=context.createBiquadFilter(),
-        filter=context.createBiquadFilter(), gain=context.createGain();
-      source.buffer=buffer;
-      source.loop=live.mode==='loop';
-      source.playbackRate.value=live.rate;
-      low.type='lowshelf';low.frequency.value=Math.min(250,context.sampleRate*.1);
-      high.type='highshelf';high.frequency.value=Math.min(2600,context.sampleRate*.4);
-      filter.type='lowpass';filter.Q.value=-3;
-      source.connect(low);low.connect(high);high.connect(filter);
-      const nodes=[source,low,high,filter,gain];
-      let tail=filter, tone;
-      if(live.processing){
-        const highpass=context.createBiquadFilter(), lowpass=context.createBiquadFilter();
-        highpass.type='highpass';lowpass.type='lowpass';
-        highpass.Q.value=lowpass.Q.value=-3.01029995664;
-        const peaks=Array.from({length:4},()=>{
-          const node=context.createBiquadFilter();
-          node.type='peaking';
-          return node;
-        });
-        for(const node of [highpass,...peaks,lowpass]){
-          tail.connect(node);nodes.push(node);tail=node;
-        }
-        tone={highpass,peaks,lowpass};
+      row.source=row.branches[0].source;
+      row.started=row.branches[0].started;
+      for(const part of row.branches){
+        const {source,started,offset,remaining}=part;
+        tune(part,true);
+        source.onended=()=>{
+          part.ended=true;
+          for(const node of part.nodes)node.disconnect();
+          if(--left)return;
+          retiring.delete(row);
+          if(voices.get(live.id)===row){
+            voices.delete(live.id);
+            if(live.mode==='clip')remember(live.id);
+          }
+        };
+        if(remaining===undefined)source.start(started,offset);
+        else source.start(started,offset,remaining*live.rate);
       }
-      tail.connect(gain);
-      let panner;
-      if(live.position){
-        panner=context.createPanner();
-        panner.panningModel=panning;
-        panner.rolloffFactor=0;
-        gain.connect(panner);panner.connect(output(live));nodes.push(panner);
-      }else gain.connect(output(live));
-      Object.assign(row,{source,low,high,filter,gain,panner,nodes,tone,started:when});
-      tune(row,true);
-      source.onended=()=>{
-        retiring.delete(row);
-        if(voices.get(live.id)===row){
-          voices.delete(live.id);
-          if(live.mode==='clip')remember(live.id);
-        }
-        disconnect(row);
-      };
-      if(remaining===undefined)source.start(when,offset);
-      else source.start(when,offset,remaining*live.rate);
     }).catch(error=>{
       if(voices.get(voice.id)!==row)return;
       voices.delete(voice.id);
@@ -209,6 +231,9 @@ export function createSpatialAudioPlayer(context, {
           !finite(row.contact.remaining,0,10.000001)))||
         (row.startDelay!==undefined&&(row.mode!=='cue'||!finite(row.startDelay,0,10)))||
         (row.processing!==undefined&&!validProcessing(row.processing))||
+        (row.reflections!==undefined&&(row.mode!=='cue'||!row.position||!Array.isArray(row.reflections)||
+          row.reflections.length>8||!Array.from(row.reflections).every(tap=>
+            tap&&finite(tap.gain,0,16384)&&finite(tap.cutoff,20,22000)&&finite(tap.delay,.0001,.25)&&position(tap.apparentSource))))||
         !finite(row.delay,0,1e9)||row.position!==null&&!position(row.position)||
         row.apparentSource!==undefined&&!position(row.apparentSource)||
         (row.mode==='clip'?!finite(row.duration,0,1e9):
@@ -268,7 +293,10 @@ export function createSpatialAudioPlayer(context, {
             pending.push(row.pending);
           }
           row.voice=voice;
-          tune(row,false);
+          if(row.direct&&!row.direct.ended){
+            row.direct.voice=voice;
+            tune(row.direct,false);
+          }
         }else pending.push(start(voice,at));
       }
       return Promise.all(pending).then(()=>undefined);
