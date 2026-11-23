@@ -1150,3 +1150,68 @@ For Node, pass captured frames to `ink.allocateSequencePalette(shots,
 { budget, pins, materialWeights })`. Each shot has an `id` and `frames` of
 `{ w, h, rgb, alpha?, time?, materialId?, materials? }`. Material IDs use the
 top-down `Uint32Array` and name table from the renderer's material pass.
+
+## Repair palette separation for color-vision deficiencies
+
+Choose the objects or materials whose silhouettes must read against their
+surroundings. Ink captures the native art frame and finds the opaque
+horizontal and vertical contacts between the selected subjects and their
+backgrounds. It measures perceptual separation in each requested simulation
+and proposes exact swatch edits. The review uses the unsimulated frame and
+full-severity protanopia, deuteranopia, and tritanopia by default.
+[Machado, Oliveira and Fernandes simulation matrices](https://www.inf.ufrgs.br/~oliveira/pubs_files/CVD_Simulation/CVD_Simulation.html)
+
+```sh
+ink-studio palette cvd-repair examples/color-vision-palette-repair/crossing.js \
+  examples/color-vision-palette-repair/crossing.json --out crossing-repair
+```
+
+Open `crossing-repair/index.html` to switch simulations, inspect the measured
+subject edges, and compare the original and repaired frames. `report.json`
+lists the exact swatch pairs, contact counts, before and after distances, and
+whether the minimum edit count was established. Apply the exported repair
+as an ordinary output grade on a still or clip.
+
+```sh
+ink-studio render examples/color-vision-palette-repair/crossing.js \
+  --w 168 --h 108 --px 1 --output-grade crossing-repair/repair.json --out crossing.png
+```
+
+```json
+{
+  "format": "ink-studio/color-vision-palette-repair",
+  "version": 1,
+  "minDistance": 0.105,
+  "minEdges": 2,
+  "locked": ["#9eece1"],
+  "pairs": [
+    { "id": "west", "label": "West arrow", "subject": { "object": "west-signal" },
+      "background": { "object": "west-plate" } }
+  ]
+}
+```
+
+Each pair takes an `object`, a `material`, or both on either side. Without an
+explicit background, Ink measures opaque pixels outside the subject along its
+boundary. `minEdges` filters swatch pairs by their contact count per named
+relationship. `minDistance` is an OKLab distance. Optional `minLightness`
+adds a minimum absolute OKLab lightness gap. The command captures the native
+scene frame before screen composites and render graphs. Match the sample
+frame's camera, seed, time, and art size when applying the repair.
+
+`locked` protects exact swatches. `editable` can restrict changes to a list
+of specific swatches. The solver generates alternatives by varying lightness
+and hue, or uses the given `candidates` list for a swatch, as in
+`{ "#cd5357": ["#ffa19f", "#782e36"] }`. `maxShift` limits the OKLab change
+from the original. Alternatives are distinct from existing visible colors and
+locked swatches. Ink searches by increasing edit count within `maxChanges`
+and the evaluation budget. It prefers a smaller total color shift among
+solutions of the same size. Unmeasured or unsolved pairs stay visible in the
+report. Two sides that use exactly the same source color share one swatch
+assignment and need an authored separation before this global repair can
+separate them.
+
+The `swatchReplace` step applies to every final pixel with a changed source
+swatch, including its use on other objects. Use `locked` or `editable` to
+scope the approved changes. For Node, pass a native frame with `objectId`
+and `materialId` passes to `ink.repairColorVisionPalette(frame, options)`.

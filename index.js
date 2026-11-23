@@ -208,6 +208,7 @@ module.exports = {
   reviewPaletteStages: require('./cli/palette-stages.js').reviewPaletteStages,
   compareShotPalettes: require('./cli/palette-compare.js').compareShotPalettes,
   allocateSequencePalette: require('./cli/sequence-palette.js').allocateSequencePalette,
+  repairColorVisionPalette: require('./cli/color-vision-repair.js').repairColorVisionPalette,
   compareCurveModes: require('./cli/curve-compare.js').compareCurveModes,
   writeCurveComparison: require('./cli/curve-compare.js').writeCurveComparison,
   reviewCurveQuality: require('./cli/curve-quality-review.js').reviewCurveQuality,

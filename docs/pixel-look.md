@@ -244,6 +244,7 @@ from zero to one to blend its result into the color entering that step.
 | `hue` | `degrees` rotates the hue with the channel minimum and maximum held fixed. |
 | `channelMix` | `matrix` contains RGB weights for each of the three output channels. Optional `offset` adds an RGB triple. |
 | `oklabChroma` | `correction` has two `[offset, a, b]` rows for relative OKLab chroma. `maxShift` caps the correction. The full-strength step uses working sRGB and preserves OKLab lightness. |
+| `swatchReplace` | `replacements` maps up to 48 exact sRGB hex swatches to new hex swatches in a single pass. Use `--output-grade` to apply the map to finished art. |
 | `curves` | `curves` takes the same luminance ramp or RGB channel curves as `look.colorCurves`. |
 | `lut` | `lut` takes a native 3D LUT, including a JSON import from `.cube`. |
 | `paletteRemap` | `remap` addresses the original palette slots by swatch, index, or role. Rules blend against the color at this point in the stack. Protected slots retain their original colors through the entire grade. |
