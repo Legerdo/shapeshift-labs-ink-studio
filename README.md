@@ -45,6 +45,7 @@ The package includes geometry, materials, lighting, animation, character control
 - [Blind audiovisual review](docs/blind-av-review.md)
 - [Video codec round-trip approval](docs/video-round-trip.md)
 - [Compressed-audio round-trip approval](docs/audio-round-trip.md)
+- [Playback translation through measured devices](docs/playback-translation.md)
 - [WebGPU graphs and Gaussian splat import](#webgpu-graphs-and-gaussian-splat-import)
 - [Screen transitions](#screen-transitions)
 - [Module reference](#module-reference)
