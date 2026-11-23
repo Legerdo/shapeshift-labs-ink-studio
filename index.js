@@ -227,6 +227,7 @@ module.exports = {
   captureLightGroups: require('./cli/light-groups.js').captureLightGroups,
   exportScene: require('./cli/scene-export.js').exportScene,
   ...require('./cli/scene-audio.js'),
+  roomImpulseCapture: require('./src/room-impulse-capture.js'),
   openGestureBank: require('./cli/gesture-bank.js').openGestureBank,
   openSampleLibrary: require('./cli/sample-library.js').openSampleLibrary,
   readSceneReplay: require('./cli/scene-replay.js').readSceneReplay,

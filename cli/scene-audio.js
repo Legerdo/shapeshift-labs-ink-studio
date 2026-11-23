@@ -616,6 +616,7 @@ function readSceneAudio(file, { kit = require('../index.js').load(), onFile = ()
     onFile(file);
     definition.spatial={...definition.spatial,binauralProfile:Binaural.decode(bytes,pin.sha256)};
   }
+  const roomImpulses = new Map();
   const assetCache = new Map(), graphs = new Map(), prints=new Map(), editorials=new Map();
   const T=kit.KIT.procedural.takeTime;
   let soundWorld, totalSamples = 0;
@@ -670,6 +671,11 @@ function readSceneAudio(file, { kit = require('../index.js').load(), onFile = ()
     const pack=imported?.assets.get(name);
     let audio;
     if(pack)audio=packsById.get(pack.pack).audio(name);
+    else if (fields(spec,['roomImpulse','layer']) && token(spec.roomImpulse) && ['early','tail'].includes(spec.layer)) {
+      const file=path.resolve(folder,spec.roomImpulse);
+      if(!roomImpulses.has(file))roomImpulses.set(file,require('./room-impulse-capture.js').load(file,onFile));
+      audio=roomImpulses.get(file)[spec.layer];
+    }
     else if (typeof spec === 'string') {
       const file = path.resolve(folder,spec);
       audio = readAudioSource(file, kit.KIT.procedural);

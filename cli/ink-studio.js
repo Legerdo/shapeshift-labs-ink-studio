@@ -1365,6 +1365,7 @@ const CMD = {
         '  '+require('./music-sound-recipe.js').usage+'   render reproducible one-shot audio',
         '  '+require('./music-sound-recipe.js').mutationUsage+'   generate a bounded family of one-shots',
         '  '+require('./music-sound-recipe.js').replayUsage+'   rebuild a kept sound audition',
+        ...require('./room-impulse-capture.js').usage.map(line=>'  '+line),
         '  '+require('./world-sound-pack.js').usage,
         '  '+require('./world-sound-pack.js').auditionUsage,
         '  music instrument analyze|audition|build recipe.json --out path   turn a take bank into labeled playable zones',
@@ -2854,6 +2855,9 @@ const CMD = {
   },
   'effect-clip'() {
     return require('./effect-clip-command.js').command(pos,opt,{kit:lib(),operations:cfg.graphOperations,adapters:cfg.graphAdapters});
+  },
+  'room-impulse'() {
+    console.log(JSON.stringify(require('./room-impulse-capture.js').run(pos,opt),null,2));
   },
   music() {
     return require('./music-composer.js')(pos,opt,lib());
