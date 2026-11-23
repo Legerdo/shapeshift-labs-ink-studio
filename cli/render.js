@@ -165,6 +165,11 @@ function sequenceOutput(history, draw) {
 }
 
 function render(world, o, preparedPalettes) {
+  if (world.anim?.bones && (!world.rest || world.rest===world.data)) {
+    const { KIT }=require('../index.js').load();
+    if (KIT.poseCorrectives.forWorld(world)?.size)
+      world={...world,rest:world.data,data:KIT.bones.posed({...world,posedBuf:undefined})};
+  }
   o = RenderContract.options(world, o, (w, frame) => require('../index.js').load().KIT.timeDomains.frame(w, frame));
   if (o.curveMode !== undefined && o.curveMode !== 'splats' && o.curveMode !== 'curves')
     throw new RangeError('curveMode expects splats or curves');

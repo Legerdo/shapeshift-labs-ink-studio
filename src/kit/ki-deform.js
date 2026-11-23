@@ -1035,6 +1035,7 @@
         frame: [],
         visual: [],
         A: ID.slice(),
+        rotation: ID.slice(),
         t: [0, 0, 0],
         P: ID.slice(),
         Pt: [0, 0, 0],
@@ -1059,6 +1060,8 @@
     all.sort((a, b) => a[0] - b[0]);
     const Mx = new Float32Array(nb * 12),
       pup = { parts, names, order, pose: {}, bones: Mx, count: nb, time: 0 };
+    const corrective=K.poseCorrectives.bind(W,pup,d);
+    pup.correctives=corrective.editor;
     let poseSampler;
     pup.setPoseSampler = sample => {
       if (typeof sample !== 'function') throw new TypeError('A puppet pose sampler must be a function');
@@ -1118,6 +1121,7 @@
           pos = ch(name, 'pos', null);
         let L = rot ? eulerDeg(rot) : ID;
         if (turn) L = M.mul(turn, L);
+        p.rotation=L;
         if (sc !== null) {
           const s = typeof sc === 'number' ? [sc, sc, sc] : sc;
           L = M.mul(L, [s[0], 0, 0, 0, s[1], 0, 0, 0, s[2]]);
@@ -1260,7 +1264,7 @@
       return pup;
     };
     /* write the bones */
-    pup.flush = () => {
+    function flushBones() {
       pup.solve();
       for (const name of order) {
         const p = parts[name];
@@ -1277,6 +1281,11 @@
         p.skin.fill(Mx, p.first, shape, { A: p.A, t: p.t });
       }
       return pup;
+    }
+    pup.flush = () => {
+      flushBones();
+      if (pup.correctives.size) corrective.refresh(Mx);
+      return pup;
     };
     /* On a stage (K.stage) the puppet is one of its systems: the stage keeps the world's anim, and is given the bones */
     const NA = all.length,
@@ -1287,13 +1296,14 @@
       bid2: Uint16Array.from(all, a => a[2]),
       w2: Float32Array.from(all, a => a[3]),
       M: Mx,
+      correctPose:corrective.frame,
       react: def.react === true,
       pose(t, dt) {
         pup.time = t;
         pup.clear();
         const sample = poseSampler ?? def.pose;
         if (sample) sample(t, dt, pup);
-        pup.flush();
+        flushBones();
       }
     });
     pup.splats = NA;
