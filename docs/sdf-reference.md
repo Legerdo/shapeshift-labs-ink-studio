@@ -1,5 +1,7 @@
 # Offline path-traced SDF reference
 
+For native stills and clips with route-specific ink and palettes through glass or glossy reflections, see [Ink through reflection and refraction](path-ink.md).
+
 Use [traced lighting](hero-render.md#bake-traced-fill) to bake the reference transport into a native production render.
 
 Trace a few native art frames directly from the finite sculpt fields. The review aligns the
