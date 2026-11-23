@@ -1,5 +1,6 @@
 /* Play spatial mix frames through caller-owned Web Audio resources. */
 import {createRoomResponse,validateRoomResponse} from './spatial-room-response.mjs';
+import {prepareBinaural} from './spatial-binaural.mjs';
 import * as sharedBudget from '../world-voice-budget.js';
 const voiceBudget=sharedBudget.default??globalThis[Symbol.for('ink-studio.world-voice-budget')];
 const clamp=(value,min,max)=>Math.min(max,Math.max(min,value));
@@ -19,10 +20,11 @@ export function createSpatialAudioPlayer(context, {
     Object.entries(destinations).some(([name,node])=>!buses.includes(name)||node?.context!==context||typeof node.connect!=='function'))
     throw new TypeError('Spatial audio bus destinations must be AudioNodes on the player context');
   const outputs=new Map(Object.entries(destinations)), output=voice=>outputs.get(voice.bus)??destination;
-  const voices=new Map(), seen=new Set(), assets=new Map(), retiring=new Set();
+  const voices=new Map(), seen=new Set(), assets=new Map(), retiring=new Set(), tails=new Set();
   const room=createRoomResponse(context,outputs.get('effects')??destination,asset);
+  const monoAssets=new WeakMap();
   const fallback=voiceBudget.compile({maxVoices:maxVoices??32,reservedVoices:0});
-  let disposed=false, previousTime=-Infinity, policy=fallback, configured=false;
+  let disposed=false, previousTime=-Infinity, policy=fallback, configured=false, listener, profile, profileKey, binaural;
   let inspection=Object.freeze({selected:[],rejected:[]});
   function remember(id){
     seen.add(id);
@@ -72,9 +74,11 @@ export function createSpatialAudioPlayer(context, {
     }else parameter(gain.gain,voice.gain,at,immediate);
     const relative=band=>voice.gain>0?
       clamp(20*Math.log10(Math.max(1e-8,voice.bands[band]/voice.gain)),-60,40):0;
-    parameter(low.gain,relative('low'),at,immediate);
-    parameter(high.gain,relative('high'),at,immediate);
-    parameter(filter.frequency,Math.min(voice.cutoff,context.sampleRate*.49),at,immediate);
+    if(filter){
+      parameter(low.gain,relative('low'),at,immediate);
+      parameter(high.gain,relative('high'),at,immediate);
+      parameter(filter.frequency,Math.min(voice.cutoff,context.sampleRate*.49),at,immediate);
+    }
     if(row.tone){
       const {highpass,lowpass,peaks}=row.tone, plan=voice.processing;
       const limit=context.sampleRate/2;
@@ -95,8 +99,15 @@ export function createSpatialAudioPlayer(context, {
       else panner.setPosition(...point);
     }
   }
+  function release(part){
+    if(part.disconnected)return;
+    part.disconnected=true;
+    tails.delete(part);
+    part.binaural?.node.port.close();
+    for(const node of part.nodes)node.disconnect();
+  }
   function disconnect(row){
-    for(const branch of row.branches??[])for(const node of branch.nodes)node.disconnect();
+    for(const part of row.branches??[])release(part);
   }
   function stop(row,fade=false){
     if(voices.get(row.voice.id)===row)voices.delete(row.voice.id);
@@ -122,10 +133,25 @@ export function createSpatialAudioPlayer(context, {
   function reset(){
     for(const row of voices.values())stop(row);
     for(const row of retiring)stop(row);
+    for(const part of tails)release(part);
     room.reset();
+    listener=undefined;
     seen.clear();
     inspection=Object.freeze({selected:[],rejected:[]});
     previousTime=-Infinity;
+  }
+  function binauralBuffer(buffer){
+    if(buffer.numberOfChannels<=2)return buffer;
+    if(!monoAssets.has(buffer)){
+      const mono=context.createBuffer(1,buffer.length,buffer.sampleRate), audio=mono.getChannelData(0);
+      const count=buffer.numberOfChannels;
+      for(let channel=0;channel<count;channel++){
+        const data=buffer.getChannelData(channel), gain=.5/Math.ceil((count-channel%2)/2);
+        for(let i=0;i<audio.length;i++)audio[i]+=data[i]*gain;
+      }
+      monoAssets.set(buffer,mono);
+    }
+    return monoAssets.get(buffer);
   }
   function branch(live, buffer, scheduled) {
     const when=Math.max(context.currentTime,scheduled), late=when-scheduled;
@@ -133,17 +159,22 @@ export function createSpatialAudioPlayer(context, {
     const remaining=live.duration===undefined?undefined:live.duration-late;
     if(live.mode==='loop')offset%=buffer.duration;
     if(offset>=buffer.duration||remaining!==undefined&&remaining<=0)return;
-    const source=context.createBufferSource(), low=context.createBiquadFilter(), high=context.createBiquadFilter(),
-      filter=context.createBiquadFilter(), gain=context.createGain();
-    source.buffer=buffer;
+    const source=context.createBufferSource(), gain=context.createGain();
+    const pinned=live.position&&binaural?.open(listener,live.apparentSource??live.position,live.cutoff);
+    const low=pinned?null:context.createBiquadFilter(), high=pinned?null:context.createBiquadFilter(),
+      filter=pinned?null:context.createBiquadFilter();
+    source.buffer=pinned?binauralBuffer(buffer):buffer;
     source.loop=live.mode==='loop';
     source.playbackRate.value=live.rate;
-    low.type='lowshelf';low.frequency.value=Math.min(250,context.sampleRate*.1);
-    high.type='highshelf';high.frequency.value=Math.min(2600,context.sampleRate*.4);
-    filter.type='lowpass';filter.Q.value=-3;
-    source.connect(low);low.connect(high);high.connect(filter);
-    const nodes=[source,low,high,filter,gain];
-    let tail=filter, tone;
+    const nodes=[source,gain];
+    if(filter){
+      low.type='lowshelf';low.frequency.value=Math.min(250,context.sampleRate*.1);
+      high.type='highshelf';high.frequency.value=Math.min(2600,context.sampleRate*.4);
+      filter.type='lowpass';filter.Q.value=-3;
+      source.connect(low);low.connect(high);high.connect(filter);
+      nodes.push(low,high,filter);
+    }
+    let tail=filter??source, tone;
     if(live.processing){
       const highpass=context.createBiquadFilter(), lowpass=context.createBiquadFilter();
       highpass.type='highpass';lowpass.type='lowpass';
@@ -159,21 +190,27 @@ export function createSpatialAudioPlayer(context, {
       tone={highpass,peaks,lowpass};
     }
     tail.connect(gain);
-    let panner;
-    if(live.position){
+    let panner, spatialNode;
+    if(pinned)spatialNode=pinned.node;
+    else if(live.position){
       panner=context.createPanner();
       panner.panningModel=panning;
       panner.rolloffFactor=0;
-      gain.connect(panner);panner.connect(output(live));nodes.push(panner);
-      if(room.input)panner.connect(room.input);
+      spatialNode=panner;
+    }
+    if(spatialNode){
+      gain.connect(spatialNode);spatialNode.connect(output(live));nodes.push(spatialNode);
+      if(room.input)spatialNode.connect(room.input);
     }else gain.connect(output(live));
-    return {voice:live,source,low,high,filter,gain,panner,nodes,tone,started:when,offset,remaining};
+    const part={voice:live,source,low,high,filter,gain,panner,spatialNode,binaural:pinned,nodes,tone,started:when,offset,remaining};
+    if(pinned)spatialNode.port.onmessage=()=>release(part);
+    return part;
   }
 
-  function start(voice,at,roomReady){
+  function start(voice,at,positionedReady){
     const row={voice,when:at+voice.delay+(voice.startDelay??0),branches:[]};
     voices.set(voice.id,row);
-    row.pending=(roomReady&&voice.position ? Promise.all([asset(voice.asset),roomReady]).then(([buffer])=>buffer) :
+    row.pending=(positionedReady&&voice.position ? Promise.all([asset(voice.asset),positionedReady]).then(([buffer])=>buffer) :
       asset(voice.asset)).then(buffer=>{
       if(disposed||voices.get(voice.id)!==row)return;
       const live=row.voice;
@@ -197,7 +234,10 @@ export function createSpatialAudioPlayer(context, {
         tune(part,true);
         source.onended=()=>{
           part.ended=true;
-          for(const node of part.nodes)node.disconnect();
+          if(part.binaural&&!part.disconnected){
+            tails.add(part);
+            part.spatialNode.port.postMessage({end:true});
+          }else release(part);
           if(--left)return;
           retiring.delete(row);
           if(voices.get(live.id)===row){
@@ -256,10 +296,18 @@ export function createSpatialAudioPlayer(context, {
       configured=authored!==null;
       const capacity=maxVoices===undefined?authored?.maxVoices:Math.min(maxVoices,authored?.maxVoices??maxVoices);
       policy=authored?{...authored,maxVoices:capacity,reservedVoices:Math.min(authored.reservedVoices,capacity)}:fallback;
-      if(seek||frame.time<previousTime)reset();
+      const nextProfile=frame.binauralProfile;
+      const changed=profile!==nextProfile&&(profile===undefined||nextProfile===undefined||
+        JSON.stringify(nextProfile)!==(profileKey??=JSON.stringify(profile)));
+      const nextBinaural=changed ? nextProfile===undefined?undefined:prepareBinaural(context,nextProfile) : binaural;
+      if(seek||frame.time<previousTime||changed&&previousTime!==-Infinity)reset();
+      if(changed)profileKey=undefined;
+      binaural=nextBinaural;
+      profile=nextProfile;
+      listener=frame.listener;
       const hadRoom=Boolean(room.input), roomReady=room.update(frame.roomResponse);
       if(!hadRoom&&room.input)for(const row of [...voices.values(),...retiring])
-        for(const part of row.branches)if(part.panner&&!part.ended)part.panner.connect(room.input);
+        for(const part of row.branches)if(part.spatialNode&&!part.ended)part.spatialNode.connect(room.input);
       listen(frame.listener,previousTime===-Infinity);
       previousTime=frame.time;
       const desired=new Map();
@@ -287,7 +335,9 @@ export function createSpatialAudioPlayer(context, {
           action:voices.has(id)?'displaced':desired.get(id).mode==='cue'?'dropped':'virtual'})))});
       while(retiring.size>policy.maxVoices)stop(retiring.values().next().value);
       for(const row of voices.values())if(!selected.has(row.voice.id))stop(row,true);
-      const pending=roomReady?[roomReady]:[], at=context.currentTime;
+      const preparations=[roomReady,binaural?.ready].filter(Boolean);
+      const positionedReady=preparations.length?Promise.all(preparations):undefined;
+      const pending=positionedReady?[positionedReady]:[], at=context.currentTime;
       for(const [id,voice] of selected){
         let row=voices.get(id);
         if(row&&(row.voice.asset!==voice.asset||(!voice.contact&&row.voice.rate!==voice.rate)||
@@ -306,12 +356,16 @@ export function createSpatialAudioPlayer(context, {
             row.direct.voice=voice;
             tune(row.direct,false);
           }
-        }else pending.push(start(voice,at,roomReady));
+          for(const part of row.branches)if(part.binaural&&!part.ended){
+            const {position,apparentSource,cutoff}=part.voice;
+            part.binaural.update(listener,apparentSource??position,cutoff);
+          }
+        }else pending.push(start(voice,at,positionedReady));
       }
       return Promise.all(pending).then(()=>undefined);
     },
     reset,
     inspectVoices:()=>inspection,
-    dispose(){if(!disposed){disposed=true;reset();assets.clear();}}
+    dispose(){if(!disposed){disposed=true;reset();binaural=profile=profileKey=undefined;assets.clear();}}
   });
 }

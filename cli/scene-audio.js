@@ -1,6 +1,8 @@
 /* Resolve authored soundtrack assets and collect voices before rendering WAV stems. */
 const fs = require('node:fs');
 const path = require('node:path');
+const {createHash} = require('node:crypto');
+const Binaural = require('../src/binaural-profile.js');
 const WAV = require('./wav.js');
 const { readAudioSource, isSoundRecipe, decodeSoundRecipe } = require('./sound-source.js');
 const { mix } = require('./scene-audio-mix.js');
@@ -37,6 +39,8 @@ function createSceneAudio(definition, { kit = require('../index.js').load(), res
   const occurrenceOf = event => K.world.timedEvents.timeOf(event) ??
     (['music-transition','music-cue'].includes(event.kind) ? event.time : undefined);
   const mixer = spatial === undefined ? null : K.world.spatialAudio.create(spatial);
+  const binauralProfile=mixer?.binauralProfile;
+  const binauralPlan=binauralProfile&&Binaural.prepare(binauralProfile,sampleRate);
   const clock = K.timeDomains.take({ sampleRate });
   const bed = Array.from(tracks, row => {
     if (!fields(row, ['asset','time','duration','offset','rate','gain','loop','bus']) || !token(row.asset) ||
@@ -102,6 +106,7 @@ function createSceneAudio(definition, { kit = require('../index.js').load(), res
     const looping = new Map(), contactTracks = new Map(), resolved = new Map(), positional = [], following = [];
     const history = trace && { sections: [], cues: [], layers: [] };
     const includeRoom=postSelected || selection?.kind!=='stem' || ['mix','spatial'].includes(selection.name);
+    const binaural=binauralPlan&&{...binauralPlan,path:[]};
     const roomPath=includeRoom && mixer?.roomResponse ? [] : undefined;
     const roomResponse=roomPath && {...mixer.roomResponse,path:roomPath,
       convolution:K.procedural.mediaGraph.prepareImpulseResponse};
@@ -131,6 +136,7 @@ function createSceneAudio(definition, { kit = require('../index.js').load(), res
       const at = voice.apparentSource ?? voice.position;
       const pan = right && at ? Math.max(-1, Math.min(1, V.dot(V.norm(V.sub(at, ear.position)), right))) : undefined;
       return { sample, gain: voice.gain, pan, cutoff: voice.cutoff, delay: delayed ? 0 : voice.delay,
+        ...(binaural&&at&&{hrirAt:at}),
         ...(mixer?.voiceBudget&&{rankGain:Math.max(voice.gain,voice.contact?.targetGain??0)}),
         ...(voice.processing&&{processing:voice.processing}) };
     }
@@ -303,6 +309,7 @@ function createSceneAudio(definition, { kit = require('../index.js').load(), res
         const knot = point(live,ear,sample,true);
         if (report) knot.position=live.position;
         knot.pan ??= row.points.at(-1).pan;
+        if (binaural) knot.hrirAt ??= row.points.at(-1).hrirAt;
         append(row.points,knot);
         if (report) {
           report.lastPosition = live.position;
@@ -333,6 +340,12 @@ function createSceneAudio(definition, { kit = require('../index.js').load(), res
       const target = audition && events.find(event=>event.id===audition.event && beat(event)?.beatId===audition.beatId);
       const state = mixer?.frame({query,listener,time,events,captureSources:trace,playback,receipts,
         ...(target && {audition})});
+      if (binaural && sample<end) {
+        const ear=state.listener, prior=binaural.path.at(-1);
+        const same=ear===prior?.ear||ear&&prior?.ear&&['position','forward','up'].every(key=>
+          ear[key].every((n,i)=>n===prior.ear[key][i]));
+        if (!prior || !same) append(binaural.path,{sample,ear});
+      }
       if (roomPath && sample<end) {
         const {room,doorway,sends}=state.roomResponse;
         const previous=roomPath.at(-1);
@@ -481,11 +494,12 @@ function createSceneAudio(definition, { kit = require('../index.js').load(), res
     const active=voices.filter(row => row.first < end && (postSelected || !selection ||
       (selection.kind==='stem' ? selection.name==='mix' || row.stem===selection.name :
         row.stem==='spatial' && row[selection.by]===selection.name)));
-    if (delivery) return post.prepare(active,resolve,{start,end,gain,roomResponse},true);
-    const result=postSelected ? post.render(active,resolve,{start,end,gain,roomResponse},selection) :
-      mix(active,resolve,{start,end,sampleRate,gain,capture:selection!==undefined,parametric:K.procedural.audioParametric,roomResponse});
+    if (delivery) return post.prepare(active,resolve,{start,end,gain,roomResponse,binaural},true);
+    const result=postSelected ? post.render(active,resolve,{start,end,gain,roomResponse,binaural},selection) :
+      mix(active,resolve,{start,end,sampleRate,gain,capture:selection!==undefined,parametric:K.procedural.audioParametric,roomResponse,binaural});
     if (selection?.kind==='world' && !result.report.stems.spatial.voices && !result.report.stems.spatial.roomResponse?.assets)
       throw new RangeError('No audible world source in the selected capture range');
+    if (binauralProfile) result.report.binauralProfile=Binaural.describe(binauralProfile);
     if (worldReport) result.report.worldScore=worldReport;
     if (worldSoundPacks.length) result.report.worldSoundPacks=worldSoundPacks;
     if (allocation) result.report.voiceBudget=allocation;
@@ -502,6 +516,7 @@ function createSceneAudio(definition, { kit = require('../index.js').load(), res
   }
   return Object.freeze({
     sampleRate,
+    ...(binauralProfile&&{binauralProfile}),
     soundFamilies:Object.freeze(Object.keys(spatial?.soundFamilies??{}).sort()),
     asset(name) {
       const audio = resolveAsset(name);
@@ -545,6 +560,18 @@ function readSceneAudio(file, { kit = require('../index.js').load(), onFile = ()
     throw new TypeError('Soundtrack needs named audio assets');
   const imported=packs.length ? packAPI.compose(definition.spatial,packs,Object.keys(assetsByName)) : null;
   if(imported)definition.spatial=imported.spatial;
+  const pin=definition.spatial?.binauralProfile;
+  if (record(pin)&&Object.hasOwn(pin,'file')) {
+    if (!fields(pin,['file','sha256'])||!token(pin.file)||!Binaural.hash(pin.sha256))
+      throw new TypeError('Binaural profile reference needs a file and lowercase SHA-256');
+    const file=path.resolve(folder,pin.file), stat=fs.statSync(file);
+    if (!stat.isFile()||!stat.size||stat.size>Binaural.maxBytes)
+      throw new RangeError('Binaural profile exceeds its byte budget');
+    const bytes=fs.readFileSync(file);
+    if (createHash('sha256').update(bytes).digest('hex')!==pin.sha256) throw new Error('Binaural profile SHA-256 mismatch');
+    onFile(file);
+    definition.spatial={...definition.spatial,binauralProfile:Binaural.decode(bytes,pin.sha256)};
+  }
   const assetCache = new Map(), graphs = new Map(), prints=new Map(), editorials=new Map();
   const T=kit.KIT.procedural.takeTime;
   let soundWorld, totalSamples = 0;
