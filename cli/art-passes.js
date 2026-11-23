@@ -137,7 +137,7 @@ function createArtPasses(request, w, h, emissiveSlots, capturePartMotion, captur
       const labels=new Map(), keys=[null], ids=new Uint32Array(size);
       for(let p=0;p<size;p++){
         const hit=atlasOwners?.get(p), i=owner[p];
-        const key=hit ? hit.mesh?.key && hit.mesh.key+'/'+hit.mesh.triangle : i>=0 ? i+1 : null;
+        const key=hit ? !hit.mesh?.localProjection && hit.mesh?.key && hit.mesh.key+'/'+hit.mesh.triangle : i>=0 ? i+1 : null;
         if(!key)continue;
         if(!labels.has(key)){labels.set(key,keys.length);keys.push(key);}
         ids[p]=labels.get(key);
