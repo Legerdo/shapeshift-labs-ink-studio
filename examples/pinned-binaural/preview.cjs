@@ -15,22 +15,37 @@ async function renderPreview(chrome,input){
     const input=${JSON.stringify(input).replaceAll('<','\\u003c')};
     const send=body=>fetch('/report',{method:'POST',body:JSON.stringify(body)});
     try {
-      const {rate,length,frames,source,channels=1,profile,sha256,panning,smoothing=0}=input;
+      const {rate,length,frames,source,channels=1,sources,profile,sha256,panning,smoothing=0,expectedStarts}=input;
       const context=new OfflineAudioContext(2,length,rate);
-      const sound=context.createBuffer(channels,source.length/channels,rate);
-      for(let ch=0;ch<channels;ch++){
-        const destination=sound.getChannelData(ch);
-        for(let i=0;i<destination.length;i++)destination[i]=source[i*channels+ch];
+      let starts=0;
+      if(expectedStarts!==undefined){
+        const create=context.createBufferSource.bind(context);
+        context.createBufferSource=()=>{
+          const node=create(), start=node.start.bind(node);
+          node.start=(...args)=>{starts++;return start(...args);};
+          return node;
+        };
       }
+      function makeBuffer(samples,channels){
+        const sound=context.createBuffer(channels,samples.length/channels,rate);
+        for(let ch=0;ch<channels;ch++){
+          const destination=sound.getChannelData(ch);
+          for(let i=0;i<destination.length;i++)destination[i]=samples[i*channels+ch];
+        }
+        return sound;
+      }
+      const sound=source&&makeBuffer(source,channels), assets=new Map(Object.entries(sources??{})
+        .map(([id,{samples,channels=1}])=>[id,makeBuffer(samples,channels)]));
       const binauralProfile=profile===undefined?undefined:
         await decodeBinauralProfile(new TextEncoder().encode(profile),{sha256});
-      const player=createSpatialAudioPlayer(context,{resolveAsset:()=>sound,panning,smoothing});
+      const player=createSpatialAudioPlayer(context,{resolveAsset:id=>assets.get(id)??sound,panning,smoothing});
       const update=frame=>player.update({...frame,binauralProfile});
       await update(frames[0]);
       const updates=frames.slice(1).map(frame=>context.suspend(frame.time).then(async()=>{
         try { await update(frame); } finally { await context.resume(); }
       }));
       const [audio]=await Promise.all([context.startRendering(),...updates]);
+      if(expectedStarts!==undefined&&expectedStarts!==starts)throw Error('Expected '+expectedStarts+' audio starts, got '+starts);
       const buffer=new Float32Array(length*2);
       for(let ch=0;ch<2;ch++){
         const samples=audio.getChannelData(ch);

@@ -395,6 +395,8 @@ Pin the same headphone impulse dataset for live audio and deterministic headless
 
 Shape the bass, mids, and treble an emitter sends toward the listener as its body rotates. [Directional sound emitters](docs/directional-audio.md)
 
+Choose which sources use physical arrival time and Doppler, with independent controls for delay and pitch. [Propagation delay and Doppler](docs/propagation-doppler.md)
+
 <!-- include: examples/puppet.js -->
 
 ```js

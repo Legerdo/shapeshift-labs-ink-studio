@@ -136,7 +136,9 @@ function createSceneAudio(definition, { kit = require('../index.js').load(), res
       const right = ear && V.norm(V.cross(ear.forward, ear.up));
       const at = voice.apparentSource ?? voice.position;
       const pan = right && at ? Math.max(-1, Math.min(1, V.dot(V.norm(V.sub(at, ear.position)), right))) : undefined;
-      return { sample, gain: voice.gain, pan, cutoff: voice.cutoff, delay: delayed ? 0 : voice.delay,
+      const moving=voice.propagation?.arrival!==undefined;
+      return { sample, gain: voice.gain, pan, cutoff: voice.cutoff, delay: delayed||moving ? 0 : voice.delay,
+        ...(moving&&{sourceTime:voice.offset,rate:voice.rate,propagated:true}),
         ...(binaural&&at&&{hrirAt:at}),
         ...(voice.radiation&&{radiation:Radiation.shelf(voice.bands,voice.gain)}),
         ...(mixer?.voiceBudget&&{rankGain:Math.max(voice.gain,voice.contact?.targetGain??0)}),
@@ -196,6 +198,7 @@ function createSceneAudio(definition, { kit = require('../index.js').load(), res
           ...(voice.processing&&(voice.processing.profiles.length||voice.audition)&&{processing:voice.processing}),
           ...(voice.sound && { sound:voice.sound }),
           ...(voice.radiation && { radiation:voice.radiation,bands:voice.bands }),
+          ...(voice.propagation && { propagation:voice.propagation }),
           ...(voice.reflections && { reflections:voice.reflections.map(tap=>({...tap,
             arrivalSample:time+Math.round(tap.delay*sampleRate)})) }),
           ...(voice.audition && { audition:voice.audition }),
@@ -236,10 +239,11 @@ function createSceneAudio(definition, { kit = require('../index.js').load(), res
       push(Object.assign(row,{points:[p]},budgetTag(voice),mixer?.voiceBudget&&report&&{audit:report}));
       if (evidence) playbackReceipts.add(source,{...evidence,track:row,audit:report});
     }
-    function cueFrame(query, sample, nextSample, ear) {
+    function cueFrame(query, time, sample, nextSample, ear) {
       while (next < cues.length && cues[next].firstSample < nextSample && cues[next].firstSample < cueLimit) {
         const row = cues[next++], { cue, firstSample: first, endSample } = row;
-        const configured = mixer?.cue({ query, listener, cue, gain: row.gain, pitch: row.rate });
+        const configured = mixer?.cue({ query, listener, cue, gain: row.gain, pitch: row.rate,
+          time,playback,onset:first/sampleRate,...(endSample!==undefined&&{mode:'clip'}) });
         if (!configured) {
           const voice={stem:'timeline',asset:cue,first,end:endSample,offset:row.offset,gain:row.gain,rate:row.rate};
           capture(cue,voice,row.gain);
@@ -261,7 +265,7 @@ function createSceneAudio(definition, { kit = require('../index.js').load(), res
       for (let i = positional.length - 1; i >= 0; i--) {
         const { voice, ...parameters } = positional[i];
         if (sample >= voice.end) positional.splice(i, 1);
-        else append(voice.points, point(mixer.cue({ query, listener, ...parameters }), ear,
+        else append(voice.points, point(mixer.cue({ query, listener, ...parameters,mode:'clip' }), ear,
           Math.max(sample, voice.first), true));
       }
     }
@@ -359,7 +363,7 @@ function createSceneAudio(definition, { kit = require('../index.js').load(), res
           append(roomPath,{sample,room,doorway,sends});
       }
       const byId = history && state?.cues.length ? new Map(events.map(event=>[event.id,event])) : null;
-      cueFrame(query, sample, nextSample, state?.listener);
+      cueFrame(query, time, sample, nextSample, state?.listener);
       if (state) {
         updateFollowing(query,state.listener,sample);
         for (const change of state.contactChanges ?? []) {
@@ -378,7 +382,12 @@ function createSceneAudio(definition, { kit = require('../index.js').load(), res
               loop:true, offset:voice.offset, rate:voice.rate, points:[],...budgetTag(voice) });
             looping.set(voice.id, track);
           }
-          append(track.points, point(voice, state.listener, sample));
+          const knot=point(voice,state.listener,sample);
+          if(knot.propagated&&!track.propagated){
+            track.first=Math.max(track.first,Math.round(voice.propagation.arrival*sampleRate));
+            track.propagated=true;
+          }
+          append(track.points,knot);
         }
       }
       for (const voice of state?.cues ?? [])
@@ -401,7 +410,7 @@ function createSceneAudio(definition, { kit = require('../index.js').load(), res
         if (event.kind === 'music-transition') section(event, at, beat(event));
         if (event.kind === 'music-cue') {
           const addressed = mixer?.cue({ query, listener, cue:event.resource, at:event.emitter, gain:music.gain,
-            captureSource:Boolean(history) });
+            time,playback,onset,captureSource:Boolean(history) });
           if (addressed) shot(addressed,state?.listener,at,'music',history && beat(event),sample);
           else {
             const track=push({stem:'music',asset:event.resource,first:at,gain:music.gain});

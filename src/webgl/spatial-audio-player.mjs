@@ -75,7 +75,10 @@ export function createSpatialAudioPlayer(context, {
       gain.gain.cancelScheduledValues(start);
       gain.gain.setValueAtTime(voice.gain,start);
       if(remaining)gain.gain.linearRampToValueAtTime(targetGain,start+remaining);
-    }else parameter(gain.gain,voice.gain,at,immediate);
+    }else{
+      parameter(gain.gain,voice.gain,at,immediate);
+      if(voice.propagation?.arrival!==undefined)row.source.playbackRate.setValueAtTime(voice.rate,Math.max(at,row.started));
+    }
     const relative=band=>voice.gain>0?
       clamp(20*Math.log10(Math.max(1e-8,voice.bands[band]/voice.gain)),-60,40):0;
     if(radiationTrim){
@@ -220,8 +223,9 @@ export function createSpatialAudioPlayer(context, {
     return part;
   }
 
-  function start(voice,at,positionedReady){
-    const row={voice,when:at+voice.delay+(voice.startDelay??0),branches:[]};
+  function start(voice,at,positionedReady,frameTime){
+    const late=voice.propagation&&voice.onset!==undefined?Math.max(0,frameTime-voice.onset):0;
+    const row={voice,when:at+voice.delay+(voice.startDelay??0)-late,branches:[]};
     voices.set(voice.id,row);
     row.pending=(positionedReady&&voice.position ? Promise.all([asset(voice.asset),positionedReady]).then(([buffer])=>buffer) :
       asset(voice.asset)).then(buffer=>{
@@ -280,6 +284,13 @@ export function createSpatialAudioPlayer(context, {
     return plan&&typeof plan.profile==='string'&&finite(plan.angle,0,180)&&position(plan.forward)&&
       bands.every(band=>finite(plan.db?.[band],-72,0));
   }
+  function validPropagation(voice){
+    const plan=voice.propagation;
+    return plan&&voice.position&&['loop','cue'].includes(voice.mode)&&finite(plan.travelSeconds,0,1e13)&&
+      finite(plan.delaySeconds,0,30)&&finite(plan.rateScale,.25,4)&&finite(plan.cents,-2400,2400)&&
+      (plan.arrival===undefined?voice.mode==='cue':voice.mode==='loop'&&finite(plan.arrival,0,30))&&
+      (voice.onset===undefined||finite(voice.onset,0,1e9));
+  }
   function validate(frame){
     if(!frame||!finite(frame.time,0,1e9)||!Array.isArray(frame.active)||!Array.isArray(frame.cues)||
       frame.active.length+frame.cues.length>4096||
@@ -296,6 +307,7 @@ export function createSpatialAudioPlayer(context, {
         (row.startDelay!==undefined&&(row.mode!=='cue'||!finite(row.startDelay,0,10)))||
         (row.processing!==undefined&&!validProcessing(row.processing))||
         (row.radiation!==undefined&&(!row.position||!validRadiation(row.radiation)))||
+        (row.propagation!==undefined&&!validPropagation(row))||
         (row.reflections!==undefined&&(row.mode!=='cue'||!row.position||!Array.isArray(row.reflections)||
           row.reflections.length>8||!Array.from(row.reflections).every(tap=>
             tap&&finite(tap.gain,0,16384)&&finite(tap.cutoff,20,22000)&&finite(tap.delay,.0001,.25)&&position(tap.apparentSource)&&
@@ -360,7 +372,7 @@ export function createSpatialAudioPlayer(context, {
       const pending=positionedReady?[positionedReady]:[], at=context.currentTime;
       for(const [id,voice] of selected){
         let row=voices.get(id);
-        if(row&&(row.voice.asset!==voice.asset||(!voice.contact&&row.voice.rate!==voice.rate)||
+        if(row&&(row.voice.asset!==voice.asset||(!voice.contact&&voice.propagation?.arrival===undefined&&row.voice.rate!==voice.rate)||
           Boolean(row.voice.processing)!==Boolean(voice.processing)||Boolean(row.voice.radiation)!==Boolean(voice.radiation)||
           output(row.voice)!==output(voice)||Boolean(row.voice.position)!==Boolean(voice.position))){
           stop(row);
@@ -380,7 +392,7 @@ export function createSpatialAudioPlayer(context, {
             const {position,apparentSource,cutoff}=part.voice;
             part.binaural.update(listener,apparentSource??position,cutoff);
           }
-        }else pending.push(start(voice,at,positionedReady));
+        }else pending.push(start(voice,at,positionedReady,frame.time));
       }
       return Promise.all(pending).then(()=>undefined);
     },
