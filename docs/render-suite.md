@@ -64,6 +64,8 @@ per-frame observations and per-move summaries.
   the timing run and records whether the diagnostic render reproduced
   it. The summary counts any mismatches for review.
 
+Use [video codec round-trip approval](video-round-trip.md) to check a decoded delivery file against its numbered source frames.
+
 ## Compare a different setting
 
 Use `--scene` to run just `gatehouse`, `signal-coil`, or `night`. A JSON

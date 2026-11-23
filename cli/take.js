@@ -131,6 +131,8 @@ function command(pos, opt, settings) {
     return require('./mouth-cels.js').command(pos[1],opt,settings);
   if(pos[0]==='audition-handoff'&&pos.length===2)
     return require('./attention-handoff.js').command(pos[1],opt,settings);
+  if(pos[0]==='approve-video'&&pos.length===2)
+    return require('./video-approval.js').command(pos[1],opt,settings);
   if(pos[0]==='check-sync'&&pos.length===2)
     return require('./delivered-sync.js').command(pos[1],opt,settings);
   if(['blind-review','blind-review-score'].includes(pos[0]))
