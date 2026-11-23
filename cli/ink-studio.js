@@ -1173,6 +1173,7 @@ const CMD = {
         '  shot reframe <plan.json> [--out directory]       track safe crops across delivery formats',
         '  shot match-cut <plan.json> [--out directory]      rank and play shape matches across shot handles',
         '  shot silhouette-repair <plan.json> [--out dir]   find merged characters and test small camera offsets',
+        '  shot light-approve <plan.json> [--out dir]         fit one light rig across native art grids',
         '  shot light-paint <scene> --shot-lighting rig.json --out targets.html [--t seconds] [--w W --h H]',
         '  shot light-fit <scene> --shot-lighting rig.json --targets targets.json --out folder [--evaluations N] [--interactive]',
         '  render <scene.json> --asset-pack <pack-or-bundle.json> [--environment-preset pack/preset]   install and select a reusable look',
@@ -2205,6 +2206,17 @@ const CMD = {
     console.log(warn.length ? 'warnings:\n  ' + warn.join('\n  ') : 'no warnings');
   },
   shot() {
+    if (pos[0] === 'light-approve') {
+      if (pos.length !== 2 || Object.keys(opt).some(key => key !== 'out') || opt.out === true)
+        die('Use shot light-approve <plan.json> [--out directory]');
+      const directory = outputFile('native-lighting-approval');
+      const report = require('./native-lighting-approval-command.js').run(pos[1], directory, { build, pose, view, kit: lib() });
+      console.log('Approved', report.summary.after + '/' + report.summary.total, 'grid checks with one rig after',
+        report.work.evaluations, 'candidate evaluations (was', report.summary.before + '/' + report.summary.total + ').');
+      for (const row of report.rows.filter(row => !row.after.passed)) console.log(row.grid + '/' + row.id, row.diagnostic);
+      console.log('Wrote', directory);
+      return;
+    }
     if (pos[0] === 'silhouette-repair') {
       if (pos.length !== 2 || Object.keys(opt).some(key => key !== 'out') || opt.out === true)
         die('Use shot silhouette-repair <plan.json> [--out directory]');

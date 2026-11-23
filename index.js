@@ -165,6 +165,7 @@ module.exports = {
   render: require('./cli/render.js').render,
   pickSurface: require('./src/art-passes.js').pick,
   fitShotLighting: require('./cli/shot-light-fit.js').fitShotLighting,
+  fitNativeLighting: require('./cli/native-lighting-approval.js').fitNativeLighting,
   fitSharedObjectGrade: require('./cli/shared-object-grade.js').fitSharedObjectGrade,
   planSubjectReframe: require('./cli/subject-reframe.js').planSubjectReframe,
   findMatchCuts: require('./cli/match-cut.js').findMatchCuts,

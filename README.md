@@ -356,6 +356,8 @@ Find cuts where selected shapes line up and carry their motion across the edit. 
 
 Find when moving characters touch or overlap on screen and audition a verified small camera adjustment. [Silhouette collision repair](docs/silhouette-repair.md)
 
+Fit one light rig to contour and exact-swatch limits across native art grids. [Native lighting approval](docs/native-lighting-approval.md)
+
 Edit named cues and parameter lanes against pinned passes, then reuse the effect as a graph group. [Editable effect clips](docs/effect-clips.md)
 Map textures onto tapered curves and route along, across, tangent, and coverage planes into the raster graph. [Curve-to-raster maps](docs/curve-raster-map.md)
 
@@ -846,6 +848,7 @@ The CLI and Node `render()` use the CPU renderer. Use the [browser renderer](doc
 | `shot reframe <plan.json> [--out directory]` | Fit subject-safe crop paths, export an APNG for each format, and review them against a fixed center crop. |
 | `shot match-cut <plan.json> [--out directory]` | Rank matches across two shot handles and preview the shortlisted cuts at the source frame rate. |
 | `shot silhouette-repair <plan.json> [--out directory]` | Find merged silhouettes, test small camera adjustments, and play the repaired interval. |
+| `shot light-approve <plan.json> [--out directory]` | Fit a shared light rig to native-size readability and swatch checks and report trade-offs. |
 | `scene-replay <recording> --out frame.png` | Sample a recording or regenerate its web embed with `--embed`. |
 | `project pack <scene.json> --out project.json` | Package an editable diorama and its dependencies for the editor, browser, and CLI. |
 | `project inspect <project.json>` | Show project revisions, toolkit version, and retained files. |

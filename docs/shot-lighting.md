@@ -125,3 +125,5 @@ Supply a world already posed at `plan.time`. Version 1 plans use
 Each region has an `id`, a desired `#rrggbb` `color`, and top-down
 `spans: [[y, x, length], ...]` at native art size. Regions can carry an
 optional `weight` and their pixels must be disjoint.
+
+Use [native lighting approval](native-lighting-approval.md) to fit one rig to contour and palette checks at several art sizes.
