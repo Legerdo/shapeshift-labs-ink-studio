@@ -165,6 +165,7 @@ module.exports = {
   render: require('./cli/render.js').render,
   pickSurface: require('./src/art-passes.js').pick,
   fitShotLighting: require('./cli/shot-light-fit.js').fitShotLighting,
+  fitSharedObjectGrade: require('./cli/shared-object-grade.js').fitSharedObjectGrade,
   createMotionalCoverageHistory: require('./src/motional-coverage.js').history,
   createPartMotionHistory: require('./cli/part-motion.js').history,
   createStrandMotionHistory: require('./cli/part-motion.js').history,
