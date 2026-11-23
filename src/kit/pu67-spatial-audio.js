@@ -59,7 +59,7 @@
     const {binauralProfile:profile,...rest}=definition;
     const config=copy(rest);
     const binauralProfile=profile===undefined?undefined:InkBinaural.compile(profile);
-    check(keys(config,['cues','emitters','bindings','materials','surface','distance','occlusion','propagationDelay','soundFamilies','soundSeed','contactLoops','processing','soundReferenceDb','voiceBudget','earlyReflections','roomResponse']),
+    check(keys(config,['cues','emitters','bindings','materials','surface','distance','occlusion','propagationDelay','soundFamilies','soundSeed','contactLoops','processing','soundReferenceDb','voiceBudget','earlyReflections','roomResponse','radiationProfiles']),
       'Invalid spatial audio settings');
     const distance=distanceSettings(config.distance), cueList=table(config.cues??{},512,'cues',cueName);
     const {propagationDelay=false,surface,soundReferenceDb=70}=config;
@@ -68,6 +68,9 @@
     const voiceBudget=config.voiceBudget===undefined?undefined:WorldVoiceBudget.compile(config.voiceBudget);
     const reflections=config.earlyReflections===undefined||config.earlyReflections===false?null:
       W.earlyReflections.compile(config.earlyReflections);
+    const radiationProfiles=new Map(table(config.radiationProfiles??{},128,'radiation profiles',id)
+      .map(([name,profile])=>[name,W.directionalAudio.compile(profile)]));
+    const validRadiation=name=>name===false||name===undefined||radiationProfiles.has(name);
     const roomResponse=config.roomResponse===undefined||config.roomResponse===false?undefined:
       W.roomResponse.compile(config.roomResponse);
     check(typeof propagationDelay==='boolean'&&(surface===undefined||field(surface)),'Invalid audio surface or delay setting');
@@ -79,18 +82,18 @@
     const obstacles=new Map(table(occluders,128,'occluding materials').map(([name,raw])=>[name,occlusionStyle(raw,obstacle)]));
     const cues=new Map(cueList.map(([name,raw])=>{
       const spec=typeof raw==='string'?{asset:raw}:raw;
-      check(keys(spec,['asset','at','gain','pitch','distance','occlusion','follow','bus','audioProfile','priority','protected','group','earlyReflections'])&&
+      check(keys(spec,['asset','at','gain','pitch','distance','occlusion','follow','bus','audioProfile','priority','protected','group','earlyReflections','radiation'])&&
         typeof spec.asset==='string'&&spec.asset.length<=512&&!!spec.asset.trim()&&
         (spec.at===undefined||selector(spec.at))&&finite(spec.gain??1,0,16)&&finite(spec.pitch??1,.0625,8)&&
         typeof (spec.occlusion??true)==='boolean' && typeof (spec.follow??false)==='boolean' &&
-        typeof (spec.earlyReflections??true)==='boolean' &&
+        typeof (spec.earlyReflections??true)==='boolean' && validRadiation(spec.radiation)&&
         (spec.bus===undefined||buses.includes(spec.bus))&&WorldVoiceBudget.validVoice(spec)&&
         (spec.audioProfile===undefined||processor?.has(spec.audioProfile)),'Invalid audio cue '+name);
       return [name,{...spec,gain:spec.gain??1,pitch:spec.pitch??1,
         distance:distanceSettings(spec.distance,distance),occlusion:spec.occlusion??true}];
     }));
     const emitters=table(config.emitters??{},128,'emitters').map(([name,row])=>{
-      check(keys(row,['cue','at','gain','offset'])&&cues.has(row.cue)&&(row.at===undefined||selector(row.at))&&
+      check(keys(row,['cue','at','gain','offset','radiation'])&&validRadiation(row.radiation)&&cues.has(row.cue)&&(row.at===undefined||selector(row.at))&&
         finite(row.gain??1,0,16)&&finite(row.offset??0,0,1e9),'Invalid audio emitter '+name);
       return { ...row,name };
     });
@@ -150,6 +153,7 @@
       const variation=input.selection?.variation, detune=variation?2**(variation.pitchCents/1200):1;
       const pitch=variation?.rate??Math.max(.001,Math.min(64,(input.pitch??1)*sample.pitch*detune));
       const entity=at?.entity??input.entity;
+      const radiationName=input.radiation??cue.radiation, radiation=radiationProfiles.get(radiationName);
       let processing=processor?.resolve(processor.has(input.audioProfile)?input.audioProfile:cue.audioProfile,
         {cue:input.routingCue??input.cue,entity,object:input.object??entity},query,source?.point,listener?.position);
       const edit=input.audition;
@@ -180,6 +184,7 @@
           ...(input.object!==undefined&&{object:input.object}),
           ...(input.audioProfile!==undefined&&{audioProfile:input.audioProfile}),
           ...(input.routingCue!==undefined&&{routingCue:input.routingCue}),
+          ...(input.radiation!==undefined&&{radiation:input.radiation}),
           ...(edit&&{audition:edit})}})};
       const contact=factor=>input.contact&&{contact:{...input.contact,targetGain:Math.min(16384,input.contact.targetGain*cue.gain*colorGain)*factor}};
       if(!positioned)return {...result,...contact(1),status:'unpositioned',position:null,distance:null,gain:scale,
@@ -188,11 +193,12 @@
       if(!point(position)||!listener)return {...result,...contact(0),status:'unavailable',position:point(position)?position:null,
         distance:null,gain:0,bands:{low:0,mid:0,high:0},cutoff:22000,delay:0};
       const range=V.dist(position,listener.position), spread=distanceGain(range,cue.distance);
-      let apparent=position, route, delay=0, cutoff=22000, blocker, attenuation=[1,1,1], portal=false;
+      let apparent=position, departure=listener.position, route, delay=0, cutoff=22000, blocker, attenuation=[1,1,1], portal=false;
       const exclude=[...listener.exclude,...(at.entity?[at.entity]:[]),...(input.exclude?[input.exclude]:[])];
       if(cue.occlusion&&spread>0&&query){
         if(acoustic){
           const reading=query.probe(acoustic,listener.position,{from:position,
+            ...(radiation&&{details:true}),
             ...(sound&&{band:sound.band,sourceLevelDb:sound.sourceLevelDb})});
           if(reading.status==='ok'){
             route=reading.value.status;
@@ -202,6 +208,8 @@
               // The cue owns distance falloff. Keep just the path and medium transmission.
               attenuation=bands.map(band=>amplitude(Math.max(0,reading.value.bands[band].lossDb-reading.value.distanceLossDb)));
               if(point(reading.value.apparentSource))apparent=reading.value.apparentSource;
+              const first=reading.value.path?.segments?.[0]?.to;
+              if(point(first))departure=first;
               delay=reading.value.delaySeconds??0;
             }
           }
@@ -246,12 +254,28 @@
         }
         return true;
       }:undefined;
+      const forward=radiation?.orient(source.rotation);
+      const emission=target=>{
+        const shape=radiation.sample(forward,V.sub(target,position));
+        return {profile:radiationName,forward,...shape};
+      };
+      const pressures=(base,loss,shape)=>Object.fromEntries(bands.map((band,i)=>
+        [band,base*(loss?.[i]??1)*(shape?amplitude(-shape.db[band]):1)]));
+      const direct=radiation&&emission(departure);
       const taps=reflections&&cue.earlyReflections!==false&&input.mode==='cue'&&spread>0&&scale>0&&route!=='blocked'&&!portal?
         reflections.trace(position,listener.position,{visible,distanceGain:length=>distanceGain(length,cue.distance)})
-          .map(tap=>({...tap,gain:scale*tap.gain})):undefined;
-      const levels=Object.fromEntries(bands.map((band,i)=>[band,scale*spread*attenuation[i]]));
-      return {...result,...contact(spread*attenuation[1]),status:spread===0?'out-of-range':route==='blocked'?'blocked':blocker?'occluded':'spatial',
-        position,apparentSource:apparent,distance:range,gain:levels[sound?.band??'mid'],bands:levels,cutoff,
+          .map(tap=>{
+            const gain=scale*tap.gain;
+            if(!radiation)return {...tap,gain};
+            const reflected=emission(tap.points[0]), levels=pressures(gain,undefined,reflected);
+            return {...tap,gain:Math.max(...Object.values(levels)),bands:levels,radiation:reflected};
+          }):undefined;
+      const levels=pressures(scale*spread,attenuation,direct);
+      const contactLevels=radiation?pressures(spread,attenuation,direct):undefined;
+      return {...result,...contact(contactLevels?Math.max(...Object.values(contactLevels)):spread*attenuation[1]),
+        status:spread===0?'out-of-range':route==='blocked'?'blocked':blocker?'occluded':'spatial',
+        position,apparentSource:apparent,distance:range,gain:radiation?Math.max(...Object.values(levels)):levels[sound?.band??'mid'],
+        bands:levels,cutoff,...(direct&&{radiation:direct}),
         ...(blocker&&{blocker}),...(route&&{acoustic:route}),...(taps?.length&&{reflections:taps}),
         delay:propagationDelay?delay:0};
     }
@@ -391,9 +415,10 @@
         ...(roomResponse&&{roomResponse:{...roomResponse.definition,...roomResponse.sample(ear?.position)}})}));
       return binauralProfile?Object.freeze({...state,binauralProfile}):state;
     }
-    function cue({ query, listener, cue, at, gain, pitch, exclude, object, audioProfile, routingCue, audition, captureSource } = {}) {
+    function cue({ query, listener, cue, at, gain, pitch, exclude, object, audioProfile, routingCue, audition, captureSource, radiation } = {}) {
+      check(validRadiation(radiation),'Unknown audio radiation profile');
       return mix(query, listenerFrame(query, listener),
-        { cue, at, gain, pitch, exclude, object, audioProfile, routingCue, audition, captureSource, mode: 'cue' });
+        { cue, at, gain, pitch, exclude, object, audioProfile, routingCue, audition, captureSource, radiation, mode: 'cue' });
     }
     return Object.freeze({frame,cue,createPlayback,voiceBudget,...(binauralProfile&&{binauralProfile}),...(roomResponse&&{roomResponse:roomResponse.definition})});
   }

@@ -15,15 +15,16 @@ async function renderPreview(chrome,input){
     const input=${JSON.stringify(input).replaceAll('<','\\u003c')};
     const send=body=>fetch('/report',{method:'POST',body:JSON.stringify(body)});
     try {
-      const {rate,length,frames,source,channels=1,profile,sha256}=input;
+      const {rate,length,frames,source,channels=1,profile,sha256,panning,smoothing=0}=input;
       const context=new OfflineAudioContext(2,length,rate);
       const sound=context.createBuffer(channels,source.length/channels,rate);
       for(let ch=0;ch<channels;ch++){
         const destination=sound.getChannelData(ch);
         for(let i=0;i<destination.length;i++)destination[i]=source[i*channels+ch];
       }
-      const binauralProfile=await decodeBinauralProfile(new TextEncoder().encode(profile),{sha256});
-      const player=createSpatialAudioPlayer(context,{resolveAsset:()=>sound,smoothing:0});
+      const binauralProfile=profile===undefined?undefined:
+        await decodeBinauralProfile(new TextEncoder().encode(profile),{sha256});
+      const player=createSpatialAudioPlayer(context,{resolveAsset:()=>sound,panning,smoothing});
       const update=frame=>player.update({...frame,binauralProfile});
       await update(frames[0]);
       const updates=frames.slice(1).map(frame=>context.suspend(frame.time).then(async()=>{
@@ -65,7 +66,7 @@ async function renderPreview(chrome,input){
       '--user-data-dir='+directory,'http://127.0.0.1:'+server.address().port],{stdio:'ignore'});
     child.once('error',fail);
     child.once('exit',code=>fail(Error('Preview browser exited with code '+code)));
-    timer=setTimeout(()=>fail(Error('Timed out waiting for the binaural browser render')),25000);
+    timer=setTimeout(()=>fail(Error('Timed out waiting for the spatial audio browser render')),25000);
     const {audio,error}=await result;
     if(error)throw Error(error);
     const bytes=Buffer.from(audio,'base64');
