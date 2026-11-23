@@ -1585,6 +1585,7 @@ const CMD = {
         '  take blind-review-score <review-key.json> <ballots-directory> --out directory   compare action, cause and impact by version',
         '  take approve-audio <plan.json> --out report.json   check decoded audio for timing, true peak and loop seams',
         '  take approve-video <plan.json> --out directory   check decoded video for palette, accent and flicker damage',
+        '  take review-flashes <plan.json> --out directory   trace composited and decoded flashes and verify a reduced-flicker preview',
         '  take check-sync <recipe.json> [--out report.json] [--fail-on-flags]   compare visible contact and rendered attack',
         '  timeline <scene> [--at seconds] [--from seconds --to seconds] [--out report.json]  sample tracks and export cues',
         '  authored-contacts <id> [--at seconds] [--out report.json]  inspect contact ranges and socket transfer timing',
