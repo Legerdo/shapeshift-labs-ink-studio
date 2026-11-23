@@ -56,13 +56,15 @@
 
   function create(definition={}){
     const config=copy(definition);
-    check(keys(config,['cues','emitters','bindings','materials','surface','distance','occlusion','propagationDelay','soundFamilies','soundSeed','contactLoops','processing','soundReferenceDb','voiceBudget']),
+    check(keys(config,['cues','emitters','bindings','materials','surface','distance','occlusion','propagationDelay','soundFamilies','soundSeed','contactLoops','processing','soundReferenceDb','voiceBudget','earlyReflections']),
       'Invalid spatial audio settings');
     const distance=distanceSettings(config.distance), cueList=table(config.cues??{},512,'cues',cueName);
     const {propagationDelay=false,surface,soundReferenceDb=70}=config;
     check(W.soundEvents.levelOK(soundReferenceDb),'Invalid world sound playback reference level');
     const processor=config.processing===undefined?null:W.spatialSoundProcessing.compile(config.processing);
     const voiceBudget=config.voiceBudget===undefined?undefined:WorldVoiceBudget.compile(config.voiceBudget);
+    const reflections=config.earlyReflections===undefined||config.earlyReflections===false?null:
+      W.earlyReflections.compile(config.earlyReflections);
     check(typeof propagationDelay==='boolean'&&(surface===undefined||field(surface)),'Invalid audio surface or delay setting');
     const {acoustic,rays=[],segments=[],lossDb,cutoff,materials:occluders={}}=config.occlusion??{};
     check(keys(config.occlusion??{},['acoustic','rays','segments','lossDb','cutoff','materials'])&&
@@ -72,10 +74,11 @@
     const obstacles=new Map(table(occluders,128,'occluding materials').map(([name,raw])=>[name,occlusionStyle(raw,obstacle)]));
     const cues=new Map(cueList.map(([name,raw])=>{
       const spec=typeof raw==='string'?{asset:raw}:raw;
-      check(keys(spec,['asset','at','gain','pitch','distance','occlusion','follow','bus','audioProfile','priority','protected','group'])&&
+      check(keys(spec,['asset','at','gain','pitch','distance','occlusion','follow','bus','audioProfile','priority','protected','group','earlyReflections'])&&
         typeof spec.asset==='string'&&spec.asset.length<=512&&!!spec.asset.trim()&&
         (spec.at===undefined||selector(spec.at))&&finite(spec.gain??1,0,16)&&finite(spec.pitch??1,.0625,8)&&
         typeof (spec.occlusion??true)==='boolean' && typeof (spec.follow??false)==='boolean' &&
+        typeof (spec.earlyReflections??true)==='boolean' &&
         (spec.bus===undefined||buses.includes(spec.bus))&&WorldVoiceBudget.validVoice(spec)&&
         (spec.audioProfile===undefined||processor?.has(spec.audioProfile)),'Invalid audio cue '+name);
       return [name,{...spec,gain:spec.gain??1,pitch:spec.pitch??1,
@@ -180,13 +183,15 @@
       if(!point(position)||!listener)return {...result,...contact(0),status:'unavailable',position:point(position)?position:null,
         distance:null,gain:0,bands:{low:0,mid:0,high:0},cutoff:22000,delay:0};
       const range=V.dist(position,listener.position), spread=distanceGain(range,cue.distance);
-      let apparent=position, route, delay=0, cutoff=22000, blocker, attenuation=[1,1,1];
+      let apparent=position, route, delay=0, cutoff=22000, blocker, attenuation=[1,1,1], portal=false;
+      const exclude=[...listener.exclude,...(at.entity?[at.entity]:[]),...(input.exclude?[input.exclude]:[])];
       if(cue.occlusion&&spread>0&&query){
         if(acoustic){
           const reading=query.probe(acoustic,listener.position,{from:position,
             ...(sound&&{band:sound.band,sourceLevelDb:sound.sourceLevelDb})});
           if(reading.status==='ok'){
             route=reading.value.status;
+            portal=reading.value.fromRoom!==undefined&&reading.value.fromRoom!==reading.value.toRoom;
             if(route==='blocked')attenuation=[0,0,0];
             else if(reading.value.bands&&Number.isFinite(reading.value.distanceLossDb)){
               // The cue owns distance falloff. Keep just the path and medium transmission.
@@ -198,7 +203,6 @@
         }
         const delta=V.sub(apparent,listener.position), length=V.len(delta);
         if(route!=='blocked'&&length>eps){
-          const exclude=[...listener.exclude,...(at.entity?[at.entity]:[]),...(input.exclude?[input.exclude]:[])];
           const direction=V.mul(delta,1/length);
           for(const trace of rays){
             const hit=query.trace(trace,listener.position,{direction,distance:Math.min(1e5,length-eps),exclude});
@@ -222,10 +226,29 @@
           }
         }
       }
+      const visible=reflections&&cue.occlusion&&query&&(rays.length||segments.length)?(a,b)=>{
+        // Pull both endpoints in so a solid reflector can be included in scene traces.
+        const delta=V.sub(b,a), length=V.len(delta), direction=V.mul(delta,1/length);
+        const pad=Math.min(.002,length*.1), origin=V.mad(a,direction,pad), stop=length-2*pad;
+        for(const trace of rays){
+          const hit=query.trace(trace,origin,{direction,distance:Math.min(1e5,stop),exclude});
+          if(hit.status==='ok'&&hit.value.distance<stop-eps)return false;
+        }
+        const to=V.mad(origin,direction,stop);
+        for(const trace of segments){
+          const hit=query.trace(trace,origin,{to});
+          if(hit.status==='ok'&&hit.value.status==='blocked')return false;
+        }
+        return true;
+      }:undefined;
+      const taps=reflections&&cue.earlyReflections!==false&&input.mode==='cue'&&spread>0&&scale>0&&route!=='blocked'&&!portal?
+        reflections.trace(position,listener.position,{visible,distanceGain:length=>distanceGain(length,cue.distance)})
+          .map(tap=>({...tap,gain:scale*tap.gain})):undefined;
       const levels=Object.fromEntries(bands.map((band,i)=>[band,scale*spread*attenuation[i]]));
       return {...result,...contact(spread*attenuation[1]),status:spread===0?'out-of-range':route==='blocked'?'blocked':blocker?'occluded':'spatial',
         position,apparentSource:apparent,distance:range,gain:levels[sound?.band??'mid'],bands:levels,cutoff,
-        ...(blocker&&{blocker}),...(route&&{acoustic:route}),delay:propagationDelay?delay:0};
+        ...(blocker&&{blocker}),...(route&&{acoustic:route}),...(taps?.length&&{reflections:taps}),
+        delay:propagationDelay?delay:0};
     }
 
     function eventAt(row) {

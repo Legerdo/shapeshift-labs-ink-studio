@@ -183,6 +183,8 @@ function createSceneAudio(definition, { kit = require('../index.js').load(), res
           ...(voice.selection && { selection:voice.selection }),
           ...(voice.processing&&(voice.processing.profiles.length||voice.audition)&&{processing:voice.processing}),
           ...(voice.sound && { sound:voice.sound }),
+          ...(voice.reflections && { reflections:voice.reflections.map(tap=>({...tap,
+            arrivalSample:time+Math.round(tap.delay*sampleRate)})) }),
           ...(voice.audition && { audition:voice.audition }),
           ...(voice.impact && { impact:{...voice.impact, delay:voice.startDelay, startSample:sample+layerDelay} }) };
         if (history.cues.length >= 16384) throw new RangeError('Story audio trace exceeds its cue budget');
@@ -206,6 +208,10 @@ function createSceneAudio(definition, { kit = require('../index.js').load(), res
         return;
       }
       const p = point(voice,ear,time,true);
+      if(voice.reflections?.length)row.reflections=voice.reflections.map(tap=>{
+        const lag=Math.round(tap.delay*sampleRate);
+        return {lag,point:point({...tap,processing:voice.processing},ear,time+lag,true)};
+      });
       if (evidence) p.position=voice.position;
       if (voice.attachment) {
         const audio = resolve(voice.asset);

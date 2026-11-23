@@ -557,6 +557,19 @@ test('Web Audio renders positional attenuation, muffling, and cancelled late ass
     player.dispose();
     return {starts,dry:[measure(4800,440),measure(4800,3600)],wet:[measure(33600,440),measure(33600,3600)]};
   }
+  async function earlyReflection(){
+    const context=new OfflineAudioContext(2,4096,rate), buffer=context.createBuffer(1,64,rate);
+    buffer.getChannelData(0).fill(.5);
+    const player=createSpatialAudioPlayer(context,{resolveAsset:()=>buffer,panning:'equalpower',maxVoices:1});
+    const frame={...base,cues:[{...voice,reflections:[{apparentSource:[-2,0,0],delay:.016,gain:.4,cutoff:5200}]}]};
+    await player.update(frame);
+    await player.update(frame);
+    const output=await context.startRendering();
+    const peak=(channel,from,to)=>Math.max(...output.getChannelData(channel).slice(from,to).map(Math.abs));
+    const result=[peak(1,0,70),peak(0,190,710),peak(0,768,834),peak(1,768,834)];
+    player.dispose();
+    return result;
+  }
   async function sharedSound(){
     const context=new OfflineAudioContext(2,samples,rate), buffer=context.createBuffer(1,rate,rate);
     buffer.getChannelData(0).fill(.25);
@@ -593,7 +606,7 @@ test('Web Audio renders positional attenuation, muffling, and cancelled late ass
     const clear=await play(voice), same=await play(voice,{duplicate:true}),
       obstructed=await play({...voice,gain:.22,bands:{low:.22,mid:.22,high:.06},cutoff:1000}),
       cancelled=await play(voice,{cancel:true});
-    await report({clear,same,obstructed,cancelled,blend:await play(voice,{blend:true}),starts:await looping(),continuous:await continuous(),impact:await impact(),tone:await contextTone(),shared:await sharedSound(),priorities:await priorities()});
+    await report({clear,same,obstructed,cancelled,blend:await play(voice,{blend:true}),starts:await looping(),continuous:await continuous(),impact:await impact(),tone:await contextTone(),shared:await sharedSound(),reflections:await earlyReflection(),priorities:await priorities()});
   }catch(error){await report({error:error.stack});}
   </script>`);
   const child=spawn(process.env.INK_TEST_CHROME,['--headless','--no-first-run','--disable-background-networking',
@@ -638,6 +651,8 @@ test('Web Audio renders positional attenuation, muffling, and cancelled late ass
   assert(wet[0]>2*dry[0]&&wet[1]<.15*dry[1]);
   assert(report.shared[0]>.05);
   near(report.shared[1],0);
+  const [directPeak,silentGap,reflectionPeak,farChannel]=report.reflections;
+  assert(directPeak>.1&&silentGap<1e-5&&reflectionPeak>.1&&farChannel<1e-5);
   const allocation=report.priorities;
   assert.deepEqual(allocation.first.selected.map(row=>row.id),['crate','stones']);
   assert.deepEqual(allocation.first.rejected.map(row=>[row.id,row.reason]),[['rain','reserved']]);
