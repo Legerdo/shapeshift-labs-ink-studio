@@ -21,7 +21,7 @@ Room loss leaves distance falloff to the cue. The final segment toward
 the apparent source can still be occluded by local geometry. An explicit
 blocked acoustic route is silent. Set a cue's `occlusion` to false to omit
 these tests for that cue. Set `propagationDelay` to true to include delay
-from the acoustic route.
+from the acoustic route. [Per-source propagation and Doppler](propagation-doppler.md) also covers direct paths and moving sources.
 
 For offline soundtrack rendering, set `follow: true` on a cue to keep its
 one-shot tail attached to its entity or socket. Set `bus` to route the cue

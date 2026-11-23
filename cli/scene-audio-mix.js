@@ -228,7 +228,7 @@ function sumVoices(voices, resolve, { start, end, sampleRate, gain = 1, cues, pa
         continue;
       }
       const position = a?.sourceTime === undefined ? p.sourceStart + (elapsed - p.first) * p.sourceStep :
-        (a.sourceTime + (elapsed - a.sample) * a.rate / sampleRate) * source.sampleRate;
+        (a.sourceTime + (elapsed - (a.propagated ? Math.max(p.first,a.sample) : a.sample)) * a.rate / sampleRate) * source.sampleRate;
       let l = stereoSource(source, position, p.loop, 0), r = stereoSource(source, position, p.loop, 1);
       if (radiation) [l,r]=radiation(l,r,a?.radiation,b?.radiation,u);
       if (tone) {
