@@ -395,6 +395,8 @@ Capture a calibrated room sweep and edit the early reflections and decay separat
 
 Generate live pickups into the next cue and carry notes shared by both harmonies. [On-the-fly harmonic bridges](docs/music-harmonic-bridges.md)
 
+Call back to the motif version played on the route, with its rhythm or intervals on a new instrument. [Motif memory across branches](docs/music-motif-branch-memory.md)
+
 Pin the same headphone impulse dataset for live audio and deterministic headless spatialization. [Pinned binaural profiles](docs/pinned-binaural.md)
 
 Shape the bass, mids, and treble an emitter sends toward the listener as its body rotates. [Directional sound emitters](docs/directional-audio.md)
