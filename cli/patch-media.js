@@ -77,6 +77,16 @@ async function* videoFrames(input, {width,height,rate,executable='ffmpeg',stream
   } finally { await process.stop(); }
 }
 
+async function* nativeVideoFrames(input, {width,height,executable='ffmpeg',signal}) {
+  const process=ffmpeg(executable,['-xerror','-noautorotate','-protocol_whitelist','file,pipe','-i',localFile(input),
+    '-map','0:v:0','-an','-sn','-dn','-fps_mode','passthrough','-pix_fmt','rgba','-c:v','rawvideo',
+    '-threads','1','-f','rawvideo','pipe:1'],signal);
+  try {
+    yield* splitFrames(process.stream,width,height);
+    await process.finish();
+  } finally { await process.stop(); }
+}
+
 async function audioSource(input, {video,executable='ffmpeg',duration,signal,procedural}) {
   if (input!=='video') return readAudioSource(localFile(input),procedural);
   if (!video || video==='-') throw new TypeError('--audio video needs a local video file');
@@ -103,4 +113,4 @@ async function audioSource(input, {video,executable='ffmpeg',duration,signal,pro
   }
   return {sampleRate,channels,samples};
 }
-module.exports={videoFrames,audioSource,parseRate,parseSize};
+module.exports={videoFrames,nativeVideoFrames,audioSource,parseRate,parseSize};
