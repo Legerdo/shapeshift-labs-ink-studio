@@ -397,6 +397,8 @@ Generate live pickups into the next cue and carry notes shared by both harmonies
 
 Choose an authored pickup or full resolution from the phrase underway and the time available before a branch exit. [Branch-aware cadence selection](docs/music-branch-cadences.md)
 
+Borrow a played phrase's timing, accents, and breath for a different melody while retaining its pitches and articulations. [Phrase contour borrowing](docs/music-phrase-contour.md)
+
 Call back to the motif version played on the route, with its rhythm or intervals on a new instrument. [Motif memory across branches](docs/music-motif-branch-memory.md)
 
 Split a recording into tonal and transient layers, then move or retune them in one session. [Harmonic and percussive separation](docs/harmonic-percussive-separation.md)

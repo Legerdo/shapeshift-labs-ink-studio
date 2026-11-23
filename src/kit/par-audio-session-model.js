@@ -177,6 +177,28 @@
     return plan.producers.get(take)?.score.tracks[lane]?.phrases.find(entry=>entry.raw.id===phrase);
   }
 
+  function borrowPhrase(next,row,plan) {
+    const {lane,take,phrase,source,from,to,targetTake=reference,activate=true,fadeSamples=0}=row;
+    const contour=P.musicPhraseContour;
+    check(fields(row,['op','lane','take','phrase','source','from','to','targetTake','timing','accent','breath','activate','fadeSamples']) &&
+      id(lane) && id(take) && id(phrase) && id(targetTake) && take!==reference && take!==targetTake &&
+      plan.pins[lane]!=='all' && typeof activate==='boolean' && integer(fadeSamples,0,plan.frames),
+    'Borrow into a named alternate take on an unpinned destination melody');
+    contour.validateSource(source);
+    const played=plan.producers.get(source.take), written=plan.producers.get(source.reference ?? reference);
+    const target=plan.producers.get(targetTake), original=target?.source.tracks[lane];
+    check(played && (source.grid!==undefined || written) && original,'Unknown donor, written reference or destination take');
+    const saved=contour.draft(phrase,source,played.score,written?.score,lane,{from,to},target.score,row);
+    const revision=clone(get(next.takes ?? {},targetTake) ?? {});
+    revision.tracks ??= {};
+    revision.tracks[lane]={...get(revision.tracks,lane),phrases:[...(original.phrases ?? []),saved]};
+    next.takes ??= {};
+    check(!Object.hasOwn(next.takes,take) || signature(next.takes[take])===signature(revision),
+      'Use a new take name for a different borrowed performance');
+    next.takes[take]=revision;
+    return activate ? {lane,take,from:{beat:from},to:{beat:to},fadeSamples} : undefined;
+  }
+
   function editPhrase(next,row,plan) {
     const base=plan.producers.get(reference);
     const {lane,take}=row;
@@ -263,7 +285,8 @@
     const next=clone(session);
     for (const row of changes) {
       let activation;
-      if (['record-phrase','phrase-point','comp-phrase'].includes(row?.op))
+      if (row?.op==='borrow-phrase') activation=borrowPhrase(next,row,plan);
+      else if (['record-phrase','phrase-point','comp-phrase'].includes(row?.op))
         activation=editPhrase(next,row,plan);
       else if (row?.op==='comp') {
         check(fields(row,['op','lane','take','from','to','fadeSamples']),'Invalid comp edit');

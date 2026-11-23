@@ -156,9 +156,9 @@
         velocity,articulation,oneShot,tune,gain:db(gain),loop,loopFade};
     });
     return {prepare(note,rate,gate) {
-      const midi=note.midi, articulation=note.play.articulation;
-      const matching=zones.filter(z=>midi>=z.low && midi<=z.high && note.velocity>=z.velocity[0] &&
-        note.velocity<=z.velocity[1] && (z.articulation===undefined || z.articulation===articulation));
+      const {midi,zoneVelocity:velocity=note.velocity}=note, articulation=note.play.articulation;
+      const matching=zones.filter(z=>midi>=z.low && midi<=z.high && velocity>=z.velocity[0] &&
+        velocity<=z.velocity[1] && (z.articulation===undefined || z.articulation===articulation));
       const zone=matching.find(z=>articulation!==undefined && z.articulation===articulation) ?? matching[0];
       if (!zone) return {duration:0,signal:()=>0};
       const alternate=note.roundRobin%zone.buffers.length;
@@ -299,7 +299,8 @@
       const start=note.start ?? note.time;
       if (!release || note.suppressRelease || (note.choke ?? Infinity)<=start+gate+1e-8) return body;
       const tail=express(player,{...note,performance:null,gate:.075,start:undefined,roundRobin:release.roundRobin,
-        zoneArticulation:note.play.articulation ?? raw.defaultArticulation,zoneVelocity:note.velocity,velocity:clamp(note.velocity*release.level),
+        zoneArticulation:note.play.articulation ?? raw.defaultArticulation,zoneVelocity:note.zoneVelocity ?? note.velocity,
+        velocity:clamp(note.velocity*release.level),
         play:{articulation:release.articulation,curves:release.curves}},rate,.075,gate);
       if (!tail.duration) return body;
       const stereo=body.stereo || tail.stereo, releaseFrame=Math.ceil(gate*rate-1e-7);
