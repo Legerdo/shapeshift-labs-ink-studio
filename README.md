@@ -894,6 +894,7 @@ The CLI and Node `render()` use the CPU renderer. Use the [browser renderer](doc
 | `data-inputs <scene-or-catalog> [dataset] [--sample JSON] [--rows]` | Inspect typed columns, sample values, or export normalized rows and spatial features. |
 | `camera-rig <scene> [--at seconds] [--camera-shot id]` | Inspect the resolved shot, projection, blend, and occlusion clearance. |
 | `camera-review <scene> --from 0 --to 2 --frames 5 --w 160 --h 96` | Check subject framing across a shot at the native export crop. |
+| `canvas-grid-check [plan.json]` | [Measure canvas pixel widths and slow-pan edge motion](docs/canvas-grid-check.md) across browser viewport sizes and DPRs. |
 | `passes <scene>` | Save art-pixel coverage, depth, normals, IDs and emission previews. |
 | `export-deep <scene> --out file.exr` | Export depth-sorted samples and camera calibration as deep OpenEXR for compositing. |
 | `export-layers <scene>` | Export transparent color, depth, normals, object IDs, and material mattes on one grid. |
