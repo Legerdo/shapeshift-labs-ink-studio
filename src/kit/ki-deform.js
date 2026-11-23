@@ -1264,26 +1264,26 @@
       return pup;
     };
     /* write the bones */
-    function flushBones() {
+    function writeBones(output) {
       pup.solve();
       for (const name of order) {
         const p = parts[name];
         if (ch(name, 'show', 1) === 0) {
           for (let i = 0; i < p.skin.n; i++) {
             const k = (p.first + i) * 12;
-            Mx.fill(0, k, k + 12);
-            Mx[k] = Mx[k + 4] = Mx[k + 8] = 1e-4;
-            Mx[k + 10] = -99;
+            output.fill(0, k, k + 12);
+            output[k] = output[k + 4] = output[k + 8] = 1e-4;
+            output[k + 10] = -99;
           }
           continue;
         }
         const shape = p.visual.length ? D.chain(p.D, ...p.visual) : p.D;
-        p.skin.fill(Mx, p.first, shape, { A: p.A, t: p.t });
+        p.skin.fill(output, p.first, shape, { A: p.A, t: p.t });
       }
-      return pup;
+      return output;
     }
     pup.flush = () => {
-      flushBones();
+      writeBones(Mx);
       if (pup.correctives.size) corrective.refresh(Mx);
       return pup;
     };
@@ -1303,7 +1303,7 @@
         pup.clear();
         const sample = poseSampler ?? def.pose;
         if (sample) sample(t, dt, pup);
-        flushBones();
+        writeBones(Mx);
       }
     });
     pup.splats = NA;
@@ -1325,6 +1325,8 @@
       });
       pup.anim = stage;
     }
+    pup.viewPoses=K.viewPoses.bind(W,pup,writeBones,corrective);
+    if(def.viewPoses) pup.viewPoses.set(def.viewPoses);
     return pup;
   };
 })(KIT);
