@@ -221,6 +221,7 @@ module.exports = {
   checkPaletteShot: require('./cli/palette-checks.js').checkPaletteShot,
   approveShot: require('./cli/shot-approval.js').approveShot,
   exportLayers: require('./cli/export-layers.js').exportLayers,
+  ...require('./cli/deep-openexr.js'),
   objectMatte: require('./cli/object-mattes.js').objectMatte,
   captureLightGroups: require('./cli/light-groups.js').captureLightGroups,
   exportScene: require('./cli/scene-export.js').exportScene,

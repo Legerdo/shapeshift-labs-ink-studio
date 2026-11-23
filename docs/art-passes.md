@@ -176,6 +176,8 @@ consume the resulting rasters as regular input slots. Run
 `node examples/deep-composite.cjs tide-archive.html` for a preview of the
 transmission, reflection and fog rasters from one scene.
 
+Use [Deep OpenEXR export](deep-openexr.md) to take these native per-pixel samples into a deep compositor.
+
 ## Layered exports
 
 `ink-studio export-layers <scene> --t 0,1,2 --out directory` writes numbered image sequences and a `layers.json` manifest. Use the usual camera and render options and set `--w` and `--h` for the output size. Use `--px1` to keep the renderer's native color grid. A single frame at time zero is the default. Use `--from`, `--to`, and `--n` for evenly spaced samples.

@@ -855,6 +855,7 @@ The CLI and Node `render()` use the CPU renderer. Use the [browser renderer](doc
 | `camera-rig <scene> [--at seconds] [--camera-shot id]` | Inspect the resolved shot, projection, blend, and occlusion clearance. |
 | `camera-review <scene> --from 0 --to 2 --frames 5 --w 160 --h 96` | Check subject framing across a shot at the native export crop. |
 | `passes <scene>` | Save art-pixel coverage, depth, normals, IDs and emission previews. |
+| `export-deep <scene> --out file.exr` | Export depth-sorted samples and camera calibration as deep OpenEXR for compositing. |
 | `export-layers <scene>` | Export transparent color, depth, normals, object IDs, and material mattes on one grid. |
 | `export-scene <scene> --out directory` | Publish a high-resolution still, loop and PNG sequence, replay recording, and web embed. |
 | `shot reframe <plan.json> [--out directory]` | Fit subject-safe crop paths, export an APNG for each format, and review them against a fixed center crop. |

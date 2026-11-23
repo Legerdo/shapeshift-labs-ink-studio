@@ -902,7 +902,8 @@ function renderFrame(world, o, preparedPalettes) {
   if (reconstructed) spriteAtlases.push(...reconstructed.keys());
   const geometryMask = spritePlan?.mask;
   if (spriteLOD && !reflectionPlane && !probeView) o.spriteReconstructionFrame?.(spritePlan ?? { geometryRows:world.count, states:[] });
-  const deep = DeepComposite.capture(W, H, deepPlan, world.renderMetadata, o[deepReflection], spriteAtlases);
+  const deep = DeepComposite.capture(W, H, deepPlan, world.renderMetadata, o[deepReflection], spriteAtlases,
+    deepPlan && {view:Array.from(V), focal, ortho, setback:depthOffset});
   const mattes = ObjectMattes.capture(W,H,o[matteScope],world.renderMetadata);
   const planarMatte = mattes && new Float32Array(mattes.count);
   const paintView = { direction: [V[2], V[6], V[10]], ...(ortho ? {} : { eye }) };
