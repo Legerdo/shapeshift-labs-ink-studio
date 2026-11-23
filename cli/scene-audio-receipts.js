@@ -48,6 +48,7 @@ function createPlaybackReceipts({sampleRate,end,post}) {
         reason='zero-gain';
       } else {
         if (placed) actualSample=plannedSample;
+        else if (track?.aggregationMember?.end>track?.aggregationMember?.start) actualSample=track.aggregationMember.start;
         else if (track) actualSample=playbackStart(track,resolve(track.asset),sampleRate,end);
         if (actualSample===null) {
           outcome='muted';
@@ -56,8 +57,8 @@ function createPlaybackReceipts({sampleRate,end,post}) {
         } else outcome=actualSample>plannedSample ? 'late' : 'played';
       }
       const spatialSource=receipt.spatialSource && {...receipt.spatialSource,
-        ...(actualSample!==null && {actualPosition:positionAt(track,actualSample,receipt.spatialSource.position)})};
-      const result={...receipt,spatialSource,actualSample,lateBySamples:actualSample===null ? null : actualSample-plannedSample,outcome,
+        ...(actualSample!==null && {actualPosition:track?.aggregationMember?.position??positionAt(track,actualSample,receipt.spatialSource.position)})};
+      const result={...receipt,...(post&&track?.aggregationMember&&{bus:track.aggregationMember.bus}),spatialSource,actualSample,lateBySamples:actualSample===null ? null : actualSample-plannedSample,outcome,
         ...(reason && {reason}),...(allocation && {voiceBudget:allocation})};
       if (audit) {
         const {beatId,cue,asset,...evidence}=result;

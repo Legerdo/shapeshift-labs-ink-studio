@@ -1,6 +1,7 @@
 /* Play spatial mix frames through caller-owned Web Audio resources. */
 import {createRoomResponse,validateRoomResponse} from './spatial-room-response.mjs';
 import {prepareBinaural} from './spatial-binaural.mjs';
+import {createCrowdAudio} from './crowd-audio.mjs';
 import * as sharedBudget from '../world-voice-budget.js';
 import * as sharedRadiation from '../spatial-radiation.js';
 import * as sharedPulse from '../contact-pulse.js';
@@ -28,6 +29,7 @@ export function createSpatialAudioPlayer(context, {
   const outputs=new Map(Object.entries(destinations)), output=voice=>outputs.get(voice.bus)??destination;
   const voices=new Map(), seen=new Set(), assets=new Map(), retiring=new Set(), tails=new Set();
   const room=createRoomResponse(context,outputs.get('effects')??destination,asset);
+  const crowd=createCrowdAudio(context,{panning,asset:sourceAsset,output:bus=>outputs.get(bus)??destination,room});
   const monoAssets=new WeakMap(), pulseAssets=new Map();
   const fallback=voiceBudget.compile({maxVoices:maxVoices??32,reservedVoices:0});
   let disposed=false, previousTime=-Infinity, policy=fallback, configured=false, listener, profile, profileKey, binaural;
@@ -163,6 +165,7 @@ export function createSpatialAudioPlayer(context, {
     for(const row of voices.values())stop(row);
     for(const row of retiring)stop(row);
     for(const part of tails)release(part);
+    crowd.reset();
     room.reset();
     listener=undefined;
     seen.clear();
@@ -374,7 +377,8 @@ export function createSpatialAudioPlayer(context, {
       const candidates=[...desired.values()].map(voice=>({...voice,incumbent:voices.has(voice.id),
         gain:configured?Math.max(voice.gain,voice.contact?.targetGain??0):voice.gain}));
       const stable=configured||candidates.some(voice=>voice.priority!==undefined||voice.protected!==undefined);
-      const ranked=voiceBudget.select(candidates,policy,stable);
+      const ranked=policy.aggregation&&listener?voiceBudget.selectWithTextures(candidates,policy,crowd.active(),stable):
+        voiceBudget.select(candidates,policy,stable);
       const selected=new Map([...ranked.selected].map(id=>[id,desired.get(id)]));
       const info=(id,decision)=>{
         const {cue,priority=0,protected:critical=false,group}=desired.get(id);
@@ -382,13 +386,17 @@ export function createSpatialAudioPlayer(context, {
       };
       inspection=Object.freeze({time:frame.time,limit:policy.maxVoices,reservedVoices:policy.reservedVoices,
         selected:Object.freeze([...selected.keys()].map(id=>info(id,{}))),
+        ...(policy.aggregation&&{aggregation:Object.freeze({slots:ranked.seats??0,count:ranked.overflow?.size??0})}),
         rejected:Object.freeze([...ranked.rejected].map(([id,reason])=>info(id,{reason,
-          action:voices.has(id)?'displaced':desired.get(id).mode==='cue'?'dropped':'virtual'})))});
+          action:ranked.overflow?.has(id)?'aggregated':voices.has(id)?'displaced':desired.get(id).mode==='cue'?'dropped':'virtual'})))});
       while(retiring.size>policy.maxVoices)stop(retiring.values().next().value);
       for(const row of voices.values())if(!selected.has(row.voice.id))stop(row,true);
       const preparations=[roomReady,binaural?.ready].filter(Boolean);
       const positionedReady=preparations.length?Promise.all(preparations):undefined;
       const pending=positionedReady?[positionedReady]:[], at=context.currentTime;
+      const texture=crowd.update({seats:ranked.seats,config:policy.aggregation,listener,binaural,time:frame.time,
+        ready:positionedReady,voices:ranked.overflow?[...ranked.overflow].map(id=>desired.get(id)):[]});
+      if(texture)pending.push(texture);
       for(const [id,voice] of selected){
         let row=voices.get(id);
         if(row&&(row.voice.asset!==voice.asset||(!voice.contact&&voice.propagation?.arrival===undefined&&row.voice.rate!==voice.rate)||
