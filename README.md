@@ -391,6 +391,8 @@ Trace the first audible bounces off room geometry and finite panels in live and 
 
 Blend recorded or baked room impulse responses as the listener moves, with tails that carry across doorways. [Position-dependent room responses](docs/room-response.md)
 
+Pin the same headphone impulse dataset for live audio and deterministic headless spatialization. [Pinned binaural profiles](docs/pinned-binaural.md)
+
 <!-- include: examples/puppet.js -->
 
 ```js

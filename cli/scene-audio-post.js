@@ -16,12 +16,12 @@ function createScenePost(P,post,sampleRate) {
     definitions[name]=row;
   }
   const taps=Object.fromEntries(buses.map(name=>[name,{strip:name}]));
-  function prepare(voices,resolve,{start,end,gain,roomResponse},collect=false) {
+  function prepare(voices,resolve,{start,end,gain,roomResponse,binaural},collect=false) {
     check(start>=0 && end>start && end*2*buses.length<=32e6,'Scene post needs a nonnegative, bounded timeline range');
     const classified=voices.map(row=>({...row,stem:row.bus ?? (
       row.stem==='music' ? 'music' : row.stem==='tracks' || row.stem==='spatial' && row.loop ? 'ambience' : 'effects')}));
     const cues=collect ? [] : undefined;
-    const {stems,statistics}=sumVoices(classified,resolve,{start:0,end,sampleRate,gain,cues,parametric:P.audioParametric,roomResponse},buses);
+    const {stems,statistics}=sumVoices(classified,resolve,{start:0,end,sampleRate,gain,cues,parametric:P.audioParametric,roomResponse,binaural},buses);
     const assets=Object.fromEntries(Object.entries(post.assets ?? {}).map(([name,asset])=>[name,resolve(asset)]));
     const strips={...definitions}, premix=new Map();
     for (const [name,samples] of stems) {
@@ -34,8 +34,8 @@ function createScenePost(P,post,sampleRate) {
       ...(post.peakPolicy!==undefined && {peakPolicy:post.peakPolicy})};
     return {mixer,assets,premix,statistics,cues};
   }
-  function render(voices,resolve,{start,end,gain,roomResponse},selection) {
-    const {mixer,assets,premix,statistics}=prepare(voices,resolve,{start,end,gain,roomResponse});
+  function render(voices,resolve,{start,end,gain,roomResponse,binaural},selection) {
+    const {mixer,assets,premix,statistics}=prepare(voices,resolve,{start,end,gain,roomResponse,binaural});
     const stage=P.mediaGraph.mixer.renderPremix(mixer,assets,premix);
     const slice=audio=>({...audio,samples:audio.samples.subarray(start*2,end*2)});
     const value=slice(stage.value), printed=Object.fromEntries(Object.entries(stage.taps).map(([name,sound])=>[name,slice(sound)]));

@@ -12,6 +12,7 @@ export { createSurfacePipeline } from './src/webgl/surfaces.mjs';
 export { createDrawingInput } from './src/webgl/drawing-input.mjs';
 export { createViewerInput } from './src/webgl/viewer-input.mjs';
 export { createSpatialAudioPlayer } from './src/webgl/spatial-audio-player.mjs';
+export { decodeBinauralProfile } from './src/webgl/spatial-binaural.mjs';
 export { mountLinkedViews } from './src/webgl/linked-views.mjs';
 export { createComparisonRenderer } from './src/webgl/comparison-renderer.mjs';
 export { captureCamera } from './src/webgl/view.mjs';

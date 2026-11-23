@@ -1,5 +1,6 @@
 /* Offline stereo resampling, panning, and stem summing on an absolute sample grid. */
 const WAV = require('./wav.js');
+const Binaural = require('../src/binaural-profile.js');
 const {addRoomResponse} = require('./scene-room-response.js');
 
 const stereo = ['timeline', 'spatial', 'music', 'tracks'];
@@ -104,32 +105,37 @@ function* arrivals(voices) {
   }
 }
 
-function sumVoices(voices, resolve, { start, end, sampleRate, gain = 1, cues, parametric, roomResponse }, buses = stereo) {
+function sumVoices(voices, resolve, { start, end, sampleRate, gain = 1, cues, parametric, roomResponse, binaural }, buses = stereo) {
   const historyStart = Math.min(start,roomResponse?.path[0]?.sample??start), count = end-start;
   if (!Number.isSafeInteger(count) || count < 1 || (end-historyStart)*2 > WAV.maxSamples)
     throw new RangeError('Scene soundtrack exceeds its WAV sample budget');
   const stems = new Map(buses.map(name => [name, new Float32Array(count * 2)]));
   const statistics = Object.fromEntries(buses.map(name => [name, { voices: 0, peak: 0 }]));
   const roomInput=roomResponse && new Float32Array((end-historyStart)*2);
-  let work = 0;
+  let work = 0, binauralWork=0;
   for (const { stem, ...voice } of arrivals(voices)) {
     const spans = voice.admissions;
-    const inputStart=roomInput&&voice.points?.some(point=>point.pan!==undefined) ? historyStart : start;
-    if (spans && !spans.some(span=>span.end>inputStart&&span.end>span.first)) continue;
-    if (voice.end !== undefined && voice.end <= inputStart) continue;
+    const pinned=binaural&&voice.points?.some(point=>point.hrirAt);
+    const inputStart=pinned?Math.min(historyStart,binaural.path[0]?.sample??start):
+      roomInput&&voice.points?.some(point=>point.pan!==undefined)?historyStart:start;
+    const tail=pinned?binaural.length-1:0;
+    if (spans && !spans.some(span=>span.end+tail>inputStart&&span.end>span.first)) continue;
+    if (voice.end !== undefined && voice.end+tail <= inputStart) continue;
     const source = resolve(voice.asset);
     if (!source.samples.length) continue;
     const p = placement(voice, source, sampleRate), bus = stems.get(stem);
-    const first = Math.max(inputStart, p.first), last = Math.min(p.end, end);
-    if (last <= first) continue;
+    const first = Math.max(inputStart, p.first), last = Math.min(p.end, end), stop=Math.min(end,last+tail);
+    if (stop <= first) continue;
     const points = p.points, filters = Boolean(points?.some(row => row.cutoff < 22000));
     const tone = contextualFilter(points, sampleRate, parametric);
     // Restore the complete filter history for contextual audio when printing a crop.
     const begin = tone || spans && filters ? p.first : filters ? Math.max(p.first, first - Math.ceil(sampleRate / 3)) : first;
     const length = spans ? spans.reduce((sum,span)=>sum+Math.max(0,Math.min(span.end,last)-Math.max(span.first,begin)),0) : last-begin;
     work += length * Math.max(2, source.channels) * (1 + (tone?.stages ?? 0));
+    if (pinned) binauralWork+=Math.max(0,stop-begin)*binaural.length;
+    if (binauralWork>2.4e9) throw new RangeError('Scene soundtrack exceeds its binaural processing budget');
     if (work > 240e6) throw new RangeError('Scene soundtrack exceeds its mixing work budget');
-    if (last>start && (inputStart===start||!spans||spans.some(span=>span.end>start&&span.first<last))) {
+    if (stop>start && (inputStart===start||!spans||spans.some(span=>span.end+tail>start&&span.first<last))) {
       if (voice.reflection) statistics[stem].reflections=(statistics[stem].reflections??0)+1;
       else statistics[stem].voices++;
     }
@@ -140,18 +146,33 @@ function sumVoices(voices, resolve, { start, end, sampleRate, gain = 1, cues, pa
         if(fromSample<toSample)cues.push({label:voice.cue??source,source,role:stem,fromSample,toSample});
       }
     }
-    let knot = 0, low = 0, spanIndex = 0;
-    for (let sample = begin; sample < last; sample++) {
+    function spatial(sample,left,right){
+      if (sample>=start) {
+        const n=(sample-start)*2;
+        bus[n]+=left;
+        bus[n+1]+=right;
+      }
+      if (roomInput && sample>=historyStart) {
+        const at=(sample-historyStart)*2;
+        roomInput[at]+=left;
+        roomInput[at+1]+=right;
+      }
+    }
+    let knot = 0, low = 0, spanIndex = 0, listenerIndex=0, fir, priorAt, priorEar, priorDirection, hrirCutoff;
+    for (let sample = begin; sample < stop; sample++) {
       let admission = 1;
       if (spans) {
         while (spans[spanIndex]?.end <= sample) spanIndex++;
         const span = spans[spanIndex];
-        if (!span) break;
-        sample = Math.max(sample,span.first);
-        if (sample>=last) break;
-        if (span.fadeIn) admission = Math.min(1,(sample-span.first)/span.fadeIn);
-        if (span.fadeFrom!==undefined && sample>=span.fadeFrom)
-          admission *= (span.end-sample)/(span.end-span.fadeFrom);
+        if (pinned&&(!span||sample<span.first)) admission=0;
+        else {
+          if (!span) break;
+          sample = Math.max(sample,span.first);
+          if (!pinned && sample>=last) break;
+          if (span.fadeIn) admission = Math.min(1,(sample-span.first)/span.fadeIn);
+          if (span.fadeFrom!==undefined && sample>=span.fadeFrom)
+            admission *= (span.end-sample)/(span.end-span.fadeFrom);
+        }
       }
       while (points && knot + 1 < points.length && points[knot + 1].sample <= sample) knot++;
       const a = points?.[knot], b = points?.[knot + 1];
@@ -159,9 +180,33 @@ function sumVoices(voices, resolve, { start, end, sampleRate, gain = 1, cues, pa
       const level = a ? a.gain + u * ((b?.gain ?? a.gain) - a.gain) : 1;
       const pan = a?.pan === undefined ? undefined : a.pan + u * ((b?.pan ?? a.pan) - a.pan);
       const cutoff = a && a.cutoff + u * ((b?.cutoff ?? a.cutoff) - a.cutoff);
+      if (pinned) {
+        while (binaural.path[listenerIndex+1]?.sample<=sample) listenerIndex++;
+        const ear=binaural.path[listenerIndex]?.ear, at=a.hrirAt??priorAt;
+        if (!fir||at!==priorAt||ear!==priorEar) {
+          const direction=Binaural.direction(ear,at);
+          if (!fir || direction.some((n,i)=>Math.abs(n-priorDirection[i])>1e-8)) {
+            const kernel=binaural.kernel(direction);
+            if (fir) fir.set(kernel);
+            else fir=Binaural.createFilter(kernel,binaural.transition,sampleRate);
+            priorDirection=direction;
+          }
+          priorEar=ear;
+          priorAt=at;
+        }
+        hrirCutoff=a.cutoff;
+        if (sample>=last) {
+          const [left,right]=fir.process(0,hrirCutoff);
+          spatial(sample,left,right);
+          continue;
+        }
+      }
       const delay = a && a.delay + u * ((b?.delay ?? a.delay) - a.delay);
       const elapsed = sample - (delay ?? 0) * sampleRate;
-      if (a?.sourceTime !== undefined && elapsed < p.first) continue;
+      if (a?.sourceTime !== undefined && elapsed < p.first) {
+        if (fir) fir.process(0,hrirCutoff);
+        continue;
+      }
       const position = a?.sourceTime === undefined ? p.sourceStart + (elapsed - p.first) * p.sourceStep :
         (a.sourceTime + (elapsed - a.sample) * a.rate / sampleRate) * source.sampleRate;
       let l = stereoSource(source, position, p.loop, 0), r = stereoSource(source, position, p.loop, 1);
@@ -172,20 +217,15 @@ function sumVoices(voices, resolve, { start, end, sampleRate, gain = 1, cues, pa
       }
       const fade = p.fade ? clamp(Math.min((sample - p.first) / p.fade, (p.end - sample) / p.fade), 0, 1) : 1;
       const n = (sample - start) * 2, scale = level * p.gain * gain * fade * admission;
-      if (pan !== undefined) {
+      if (fir) {
+        const [left,right]=fir.process((l+r)*.5*scale,hrirCutoff);
+        spatial(sample,left,right);
+      } else if (pan !== undefined) {
         const mono = (l + r) * .5;
         low += (!filters || cutoff >= 22000 ? 1 : 1 - Math.exp(-2 * Math.PI * cutoff / sampleRate)) * (mono - low);
         if (sample < first) continue;
         const left=low*scale*Math.sqrt((1-pan)/2), right=low*scale*Math.sqrt((1+pan)/2);
-        if (sample>=start) {
-          bus[n]+=left;
-          bus[n+1]+=right;
-        }
-        if (roomInput) {
-          const at=(sample-historyStart)*2;
-          roomInput[at]+=left;
-          roomInput[at+1]+=right;
-        }
+        spatial(sample,left,right);
       } else if (sample >= Math.max(first,start)) {
         bus[n] += l * scale;
         bus[n + 1] += r * scale;

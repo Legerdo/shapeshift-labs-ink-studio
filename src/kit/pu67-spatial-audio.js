@@ -55,7 +55,10 @@
   }
 
   function create(definition={}){
-    const config=copy(definition);
+    check(record(definition),'Invalid spatial audio settings');
+    const {binauralProfile:profile,...rest}=definition;
+    const config=copy(rest);
+    const binauralProfile=profile===undefined?undefined:InkBinaural.compile(profile);
     check(keys(config,['cues','emitters','bindings','materials','surface','distance','occlusion','propagationDelay','soundFamilies','soundSeed','contactLoops','processing','soundReferenceDb','voiceBudget','earlyReflections','roomResponse']),
       'Invalid spatial audio settings');
     const distance=distanceSettings(config.distance), cueList=table(config.cues??{},512,'cues',cueName);
@@ -383,15 +386,17 @@
           add({id:trackId(item),cue:item.cue,mode:'cue',gain:item.gain,offset:item.offset},shots);
       }
       const contactChanges=sustained?.changes.map(change=>({...change,voice:mix(query,ear,change.voice)}));
-      return freeze(copy({time,listener:ear&&{position:ear.position,forward:ear.forward,up:ear.up},active,cues:shots,
+      const state=freeze(copy({time,listener:ear&&{position:ear.position,forward:ear.forward,up:ear.up},active,cues:shots,
         ...(voiceBudget&&{voiceBudget}),...(contactChanges?.length&&{contactChanges}),
         ...(roomResponse&&{roomResponse:{...roomResponse.definition,...roomResponse.sample(ear?.position)}})}));
+      return binauralProfile?Object.freeze({...state,binauralProfile}):state;
     }
     function cue({ query, listener, cue, at, gain, pitch, exclude, object, audioProfile, routingCue, audition, captureSource } = {}) {
       return mix(query, listenerFrame(query, listener),
         { cue, at, gain, pitch, exclude, object, audioProfile, routingCue, audition, captureSource, mode: 'cue' });
     }
-    return Object.freeze({frame,cue,createPlayback,voiceBudget,...(roomResponse&&{roomResponse:roomResponse.definition})});
+    return Object.freeze({frame,cue,createPlayback,voiceBudget,...(binauralProfile&&{binauralProfile}),...(roomResponse&&{roomResponse:roomResponse.definition})});
   }
   W.spatialAudio=Object.freeze({create});
+  W.binauralProfile=Object.freeze({compile:InkBinaural.compile,describe:InkBinaural.describe});
 })(KIT);
