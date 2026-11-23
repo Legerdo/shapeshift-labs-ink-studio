@@ -395,6 +395,8 @@ Capture a calibrated room sweep and edit the early reflections and decay separat
 
 Generate live pickups into the next cue and carry notes shared by both harmonies. [On-the-fly harmonic bridges](docs/music-harmonic-bridges.md)
 
+Choose an authored pickup or full resolution from the phrase underway and the time available before a branch exit. [Branch-aware cadence selection](docs/music-branch-cadences.md)
+
 Call back to the motif version played on the route, with its rhythm or intervals on a new instrument. [Motif memory across branches](docs/music-motif-branch-memory.md)
 
 Split a recording into tonal and transient layers, then move or retune them in one session. [Harmonic and percussive separation](docs/harmonic-percussive-separation.md)

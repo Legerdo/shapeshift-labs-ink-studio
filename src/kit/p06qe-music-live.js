@@ -417,7 +417,8 @@
         evidence('cue-decision',intent,{resource,status:'transition-did-not-land'});
         log('cue-skipped',{resource,reason:'transition-did-not-land',trigger:intent});
       }
-      log('transition-cancelled',{target:pending.row.intent.to,trigger:pending.row.intent,reason});
+      log('transition-cancelled',{target:pending.row.intent.to,trigger:pending.row.intent,reason,
+        ...(pending.cadence && {cadence:pending.cadence})});
       pending=null;
     }
     function nextExit(edge) {
@@ -461,6 +462,26 @@
       }
       return Math.min(planned,expected===Infinity && !edge.switchPoints ? requested : expected);
     }
+    function selectCadence(variants,landingFrame) {
+      const {segment,source,visit,phrase}=active, clock=compiled[source].clock;
+      const position=Math.min(segment.end,Math.max(segment.start,playhead(active)));
+      const beat=clock.sample(position).beat, first=clock.sample(segment.start).beat, last=clock.sample(segment.end).beat;
+      const phase=clamp((beat-first)/(last-first)), dwellFrames=frame-visit.first, availableFrames=landingFrame-frame;
+      let selected;
+      const candidates=variants.map(row=>{
+        const durationFrames=snap(row.duration), [low,high]=row.phase, reasons=[];
+        if (row.phrase!==undefined && row.phrase!==phrase) reasons.push('phrase');
+        if (phase<low-eps || high<1 && phase>=high-eps) reasons.push('phase');
+        if (dwellFrames<snap(row.minDwell)) reasons.push('dwell');
+        if (durationFrames>availableFrames) reasons.push('time');
+        const candidate={id:row.id,segment:row.segment,durationFrames,reasons};
+        if (!reasons.length && (!selected || durationFrames>selected.durationFrames)) selected=candidate;
+        return candidate;
+      });
+      return {id:selected?.id ?? null,segment:selected?.segment ?? null,status:selected ? 'scheduled' : 'no-fit',
+        startFrame:selected ? landingFrame-selected.durationFrames : null,landingFrame,availableFrames,dwellFrames,
+        phrase,beat,phase,candidates};
+    }
     function plan(row) {
       const {intent}=row, target=intent.to, section=active.section;
       if (newest && (intent.time<newest.time ||
@@ -490,17 +511,20 @@
       const lead=edge.harmonicBridge ? snap(edge.harmonicBridge.lead) : 0;
       const immediate=edge.harmonicBridge && !edge.waitForExit ? lead : 0;
       const at=nominal+immediate;
-      pending={row,edge,at,expectedFrame:expectedExit(edge,intent,nominal)+immediate,
-        ...(lead && {pickupFrame:Math.max(frame,at-lead)}),switchPoint:matched?.point,cues:[],accessories:[
+      const cadence=edge.cadences && selectCadence(edge.cadences,at);
+      const accessories=[
         [edge.bridge,'bridge',edge.pickup],
         [edge.commonTone?.segment,'common-tone',edge.commonTone?.pickup ?? 0]
       ].filter(([clip])=>clip).map(([clip,kind,pickup])=>{
         const requested=at-snap(pickup);
         if (requested<frame) profile.latePickups++;
         return {clip,kind,at:Math.max(frame,requested)};
-      })};
+      });
+      if (cadence?.id) accessories.push({clip:cadence.segment,kind:'cadence',at:cadence.startFrame});
+      pending={row,edge,at,expectedFrame:expectedExit(edge,intent,nominal)+immediate,
+        ...(lead && {pickupFrame:Math.max(frame,at-lead)}),switchPoint:matched?.point,cues:[],accessories,cadence};
       log('transition-planned',{trigger:row.intent,from:section,to:target,exitFrame:at,exit:edge.exit,entry:edge.entry,
-        ...(matched && {switchPoint:matched.point})});
+        ...(matched && {switchPoint:matched.point}),...(cadence && {cadence})});
     }
     function sounding(clip) {
       return voices.filter(voice=>voice.clip?.kind==='segment' && ((voice.owner ?? voice.clip)===clip || voice.persistent) &&
@@ -587,8 +611,13 @@
 
     function commit() {
       if (pending.pickupFrame===frame) startHarmonicPickup(pending);
-      for (const accessory of pending.accessories) if (accessory.at===frame)
+      for (const accessory of pending.accessories) if (accessory.at===frame) {
         accessory.playing=accent(accessory.clip,accessory.kind);
+        if (accessory.kind==='cadence') {
+          pending.cadence={...pending.cadence,status:accessory.playing ? 'started' : 'clip-budget'};
+          log('cadence-start',{from:active.section,to:pending.row.intent.to,cadence:pending.cadence});
+        }
+      }
       if (pending.at!==frame) return;
       const {row,edge,cues,switchPoint,expectedFrame}=pending, {intent}=row, outgoing=active;
       finish(outgoing,edge.tail,Boolean(switchPoint || edge.harmonicBridge));
@@ -613,6 +642,7 @@
           ...(active.recall&&{recall:active.recall})},
         ...(switchPoint && {switchPoint}),heard:hearing,carry:{held,echoes:[...echoes].filter(([,echo])=>echo.until>frame).map(([key])=>key),
           room:true,roomLastInputFrame:roomLastInput,bridge:edge.bridge ?? null,commonTone:edge.commonTone ?? null,
+          ...(pending.cadence && {cadence:pending.cadence}),
           ...(harmony && {harmonicBridge:{...harmony,pickup:pending.pickup ?? null}})}};
       profile.transitions++;
       boundedPush(joins,detail,traceLimit);
@@ -882,7 +912,7 @@
         audioDiagnostics:diagnostics.inspect(frame),frame,time:time(),startTime,section:active.section,source:active.source,phrase:active.phrase,
         position:Math.min(active.segment.end,playhead(active)),
         pending:pending ? {to:pending.row.intent.to,frame:pending.at,rule:pending.row.intent.rule ?? null,
-          ...(pending.switchPoint && {switchPoint:pending.switchPoint})} : null,
+          ...(pending.switchPoint && {switchPoint:pending.switchPoint}),...(pending.cadence && {cadence:pending.cadence})} : null,
         clock:control ? machine.inspect(control) : null, heard:phrasing.counts(),
         ...(memory && {themes:memory.at(time())}),
         ...(versions&&{themeVersions:versions.inspect()}),
