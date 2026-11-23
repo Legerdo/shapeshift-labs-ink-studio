@@ -354,6 +354,8 @@ Follow named subjects across a shot and export smooth, safe crops for multiple d
 
 Find cuts where selected shapes line up and carry their motion across the edit. [Match-cut finder](docs/match-cut.md)
 
+Find when moving characters touch or overlap on screen and audition a verified small camera adjustment. [Silhouette collision repair](docs/silhouette-repair.md)
+
 Edit named cues and parameter lanes against pinned passes, then reuse the effect as a graph group. [Editable effect clips](docs/effect-clips.md)
 Map textures onto tapered curves and route along, across, tangent, and coverage planes into the raster graph. [Curve-to-raster maps](docs/curve-raster-map.md)
 
@@ -839,6 +841,7 @@ The CLI and Node `render()` use the CPU renderer. Use the [browser renderer](doc
 | `export-scene <scene> --out directory` | Publish a high-resolution still, loop and PNG sequence, replay recording, and web embed. |
 | `shot reframe <plan.json> [--out directory]` | Fit subject-safe crop paths, export an APNG for each format, and review them against a fixed center crop. |
 | `shot match-cut <plan.json> [--out directory]` | Rank matches across two shot handles and preview the shortlisted cuts at the source frame rate. |
+| `shot silhouette-repair <plan.json> [--out directory]` | Find merged silhouettes, test small camera adjustments, and play the repaired interval. |
 | `scene-replay <recording> --out frame.png` | Sample a recording or regenerate its web embed with `--embed`. |
 | `project pack <scene.json> --out project.json` | Package an editable diorama and its dependencies for the editor, browser, and CLI. |
 | `project inspect <project.json>` | Show project revisions, toolkit version, and retained files. |
