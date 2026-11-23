@@ -62,6 +62,8 @@ const SelectiveTransparency = require('../src/selective-transparency.js');
 const LocalTransparency = require('./selective-transparency.js');
 const GaussianFilter = require('../src/gaussian-filter.js');
 const SdfAssist = require('../src/sdf-assist.js');
+const PixelBoundaryShot = require('./pixel-boundary-shot.js');
+const PixelBoundaries = require('./pixel-boundaries.js');
 const TracedLighting = require('./traced-lighting.js');
 const SplatFit = require('./splat-fit-asset.js');
 const SdfRaster = require('./sdf-assist.js');
@@ -507,6 +509,17 @@ function renderFrame(world, o, preparedPalettes) {
   const requestedPasses = ArtPasses.select(o.passes);
   const passSelection = new Set(requestedPasses);
   passSelection.delete('inkMask');
+  const boundaryView=!probeView && !o.reflectionPlane && !o.samples && !o.captureCoverage;
+  const boundaryCapture=boundaryView && o[PixelBoundaryShot.capture];
+  const boundaryReplay=boundaryView && o[PixelBoundaryShot.replay];
+  if (boundaryCapture || boundaryReplay) {
+    for (const channel of PixelBoundaries.channels) passSelection.add(channel);
+    if (boundaryReplay) for (const channel of ['emissionDepth','surfaceUV','surfaceUVValid','shadingNormal','geometricNormal'])
+      if (requestedPasses.includes(channel)) passSelection.add(channel);
+    if (retainContributions || o.colored || o[matteScope] || deepPlan)
+      throw new RangeError('Pixel boundaries need the primary raster palette path without layered composite or deep output');
+  }
+
   if(temporal)passSelection.add('depth');
   const captureHybridDepth = typeof o.hybridDepthFrame === 'function' && !probeView &&
     !o[matteScope] && o[subjectFocusPass] !== false && (!o.samples || o[nativePartMotion]);
@@ -843,6 +856,8 @@ function renderFrame(world, o, preparedPalettes) {
       reflections:false, atmosphere:false, precipitation:false, rainImpacts:false, captureFog:false, volumeHistory:null,
       [captureCamera]:undefined, [deepScope]:null, [matteScope]:null
     })));
+  if ((boundaryCapture || boundaryReplay) && specializedResolve)
+    throw new RangeError('Pixel boundaries need native palette resolve');
   if (legacyLook && !filter && !temporal && (specializedResolve || (o.colored && !tone))) {
     const native = render(world, Object.assign({}, o, { colored: false, samples: true, worked: true, px, passes: [...passSelection], [scopedGlowPass]: trackGlow, [coverageLane]: 'native', artInkActive: !!ink,
       [subjectFocusPass]:focus,
@@ -3457,6 +3472,12 @@ function renderFrame(world, o, preparedPalettes) {
       capture:o.captureSurfaceHistory===true||typeof o.surfaceHistoryFrame==='function'
     });
     if(temporalReport)o.surfaceHistoryFrame?.(temporalReport);
+  }
+  if (boundaryCapture || boundaryReplay) {
+    const input={world,w:W,h:H,color:col,depth:dep,alpha,passes,localAt,outline:paletteOutlines,glass:gls,overlay,
+      sun,live,lighting:artLighting};
+    if (boundaryCapture) boundaryCapture(input);
+    if (boundaryReplay) PixelBoundaryShot.apply(input,boundaryReplay);
   }
   const masks = overlay && createMaskResolve(world, { w: W, h: H, time: t, x: X, y: Y, z: Z, depth, rayAt, span: R,
     ditherView, ditherPixelStep: artScale },

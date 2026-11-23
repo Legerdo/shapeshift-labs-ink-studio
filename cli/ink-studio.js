@@ -1359,6 +1359,7 @@ const CMD = {
         '  clip <id> [--from 0 --to 6 --fps 12]   animated PNG (also --text, --feedback-fps 24, --feedback-cuts 2.5,4)',
         '    --camera-pan x,y,z --camera-orbit degrees --px 1   review slow camera motion at native art resolution',
         '    --camera-orbit-offset yaw,pitch                  offset the authored orbit in degrees',
+        '  clip <scene> --pixel-boundaries settings.json --px 1 --w N --h N --out shot.png',
         '  reel <manifest.json> [--out reel.html] [--clean]   export selected captures as an offline reel',
         '  ghost <id> [--t 2 --spacing 0.12 --n 2 | --ghosts 1.6,1.8]   one moment with those either side laid faintly over it',
         '  acts                        the ready clips, reactions, easings and cues, by name',
@@ -3791,27 +3792,54 @@ const CMD = {
       n = Math.max(2, Math.round((to - from) * fps)),
       frames = [], ts = [], camera = clipCamera(w),
       f = outputFile(w.id+'-clip.png');
-    const suffixes = [...reviewSidecars(diagnostics), ...(join ? join.suffixes : [])];
+    const boundaryFile=opt['pixel-boundaries'];
+    if (boundaryFile!==undefined && typeof boundaryFile!=='string')
+      die('--pixel-boundaries needs a shot settings JSON file');
+    const boundaryPath=boundaryFile && path.resolve(boundaryFile);
+    const boundaryReport=f.replace(/\.(?:a?png)$/i,'')+'.boundaries.json';
+    if (boundaryPath===f || boundaryPath===boundaryReport) die('Write boundary output separately from its settings');
+    if (boundaryPath) shot?.dependency(boundaryPath);
+    const suffixes = [...reviewSidecars(diagnostics), ...(join ? join.suffixes : []), ...(boundaryPath ? ['.boundaries.json'] : [])];
     shot?.destination(f,suffixes);
     const frame = { ...sequenceHistory(),
       w: num('w', 600), h: num('h', 420) };
     const replay = feedbackReplay(w, from, view(frame));
-    function draw(t, resetRenderHistory, fraction = Math.max(0, Math.min(1, (t - from) * fps / (n - 1)))) {
+    function draw(t, resetRenderHistory, fraction = Math.max(0, Math.min(1, (t - from) * fps / (n - 1))), overrides={}) {
       pose(w, t);
-      return R.render(w, view({ ...frame, t, resetRenderHistory, ...camera?.(fraction), ...diagnostics?.settings }));
+      return R.render(w, view({ ...frame, t, resetRenderHistory, ...camera?.(fraction), ...diagnostics?.settings, ...overrides }));
     }
-    for (let k = 0; k < n; k++) {
-      const t = from + k / fps;
-      const im = replay ? R.sequenceOutput(frame, ()=>replay.sample(t, draw)) : draw(t, undefined, k / (n - 1));
+    function deliver(im,t) {
       diagnostics?.capture(im, opt.px1 ? 1 : im.px);
       ts.push(t);
       frames.push(displayFrame(finishOutput(im), w));
+    }
+    let boundaries;
+    if (boundaryPath) {
+      const opts=view(frame);
+      if (replay || w.anim?.stateful || join || opts.shutter || opts.renderGraph || opts.composite ||
+          (opts.shutter ?? w.look?.shutter) || (opts.renderGraph ?? w.look?.renderGraph) ||
+          (opts.composite ?? w.look?.composite) || opts.renderGrid || (opts.renderGrid ?? w.look?.renderGrid) ||
+          artPixelSize!==undefined && artPixelSize!==1 || opt.text)
+        die('Pixel boundaries need a seekable native raster clip without shutter, render graph, composite, grid, loop analysis, or text output');
+      const analyze=(k,overrides,lane,passes)=>{
+        const t=from+k/fps;
+        if (lane==='native') pose(w,t);
+        return R.render(w,view({t,...camera?.(k/(n-1)),...overrides,passes}));
+      };
+      boundaries=require('./pixel-boundary-shot.js').shot({width:frame.w,height:frame.h,count:n,
+        settings:JSON.parse(fs.readFileSync(boundaryPath,'utf8')),draw:analyze,
+        output(k,overrides) { deliver(draw(from+k/fps,undefined,k/(n-1),{px:1,...overrides}),from+k/fps); }
+      });
+    } else for (let k = 0; k < n; k++) {
+      const t = from + k / fps;
+      deliver(replay ? R.sequenceOutput(frame, ()=>replay.sample(t, draw)) : draw(t, undefined, k / (n - 1)),t);
     }
     const end = from + n / fps;
     const audit = join && join.inspect({ first: frames[0], penultimate: frames[n - 2], last: frames[n - 1],
       endpoint: displayFrame(finishOutput(replay ? replay.sample(end, draw) : draw(end, undefined, 1)), w), from, fps, count: n });
     fs.mkdirSync(path.dirname(f), { recursive: true });
     PNG.animate(f, frames, fps);
+    if (boundaries) require('./asset-files.js').json(boundaryReport,{...boundaries,times:ts,fps});
     if (audit) {
       const base = f.replace(/\.(?:a?png)$/i, '');
       PNG.write(base + '-join.png', audit.image.w, audit.image.h, audit.image.rgb);
