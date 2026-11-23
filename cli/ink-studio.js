@@ -1032,6 +1032,7 @@ const CMD = {
         '  palette stages <scene> [--select JSON] [--allowed JSON] [--out directory]   review paint, lighting, grade and resolve',
         '  palette compare <scene|checkpoint> <palettes.json> [--out directory]   apply alternatives to one captured shot',
         '  palette sequence <plan.json> [--out directory]   allocate one pinned palette across multiple shots',
+        '  palette cvd-repair <scene> <plan.json> [--out directory]   repair weak subject/background swatches',
         '  render/clip output: --output-palette policy.json   resolve the final raster to a shared palette',
         '  render/clip output: --output-grade stack.json   grade the final raster before output palette resolve',
         '  palette save-look <approved.json> [--pack pack.json] [--out pack.json]   save approved palette findings as a look',
@@ -1488,6 +1489,15 @@ const CMD = {
     return require('./ornament.js')(pos, opt, lib(), outputFile);
   },
   palette() {
+    if (pos[0] === 'cvd-repair') {
+      if (pos.length !== 3 || ['w', 'h', 't', 'out'].some(key => opt[key] === true) || artPixelSize !== undefined && artPixelSize !== 1)
+        die('Use palette cvd-repair <scene> <plan.json> [--out directory] at native art size');
+      const directory = outputFile('color-vision-palette-repair');
+      const report = require('./color-vision-repair-command.js').run(pos[2], directory, { build: () => buildPreview(pos[1]), pose,
+        view: defaults => view({ w: num('w', defaults.w), h: num('h', defaults.h), t: num('t', defaults.t), transparent: onOffOption('transparent') }) });
+      console.log(report.status + ':', report.weakBefore, '→', report.weakAfter, 'weak pairs. Wrote', directory);
+      return;
+    }
     if (pos[0] === 'sequence') {
       if (pos.length !== 2 || Object.keys(opt).some(key => key !== 'out') || opt.out === true)
         die('Use palette sequence <plan.json> [--out directory]');
