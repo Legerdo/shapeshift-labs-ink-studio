@@ -96,6 +96,11 @@ A mapped cue keeps its original address in the placement report. The clock map n
 
 ## Take edits
 
+Use [harmonic and percussive separation](harmonic-percussive-separation.md)
+to build a session with separately editable tonal and transient clips.
+Use `transpose` with a signed `semitones` value to change a take’s pitch
+while retaining its duration and sync point.
+
 A take source is a mono or stereo WAV. Take trims and handles are zero-based,
 half-open ranges on that WAV's native PCM grid. The sync point must sit inside
 the active range. To use a named transient, put a

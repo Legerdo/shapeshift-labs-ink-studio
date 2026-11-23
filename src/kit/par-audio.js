@@ -26,6 +26,16 @@
       inputs:{sources:'record',settings:'record'},outputs:{audio:'record',entries:'record',report:'record'},
       run({sources,settings},{seed,time}) {return A.audioPrint.prepare(sources,settings,{seed,time});}
     },
+    'audio.separateHarmonicPercussive': {
+      description:'Split aligned tonal and transient layers with one stereo-linked spectral analysis.',
+      inputs:{source:'audio',options},outputs:{harmonic:'audio',percussive:'audio',report:'record'},
+      run({source,options}) {return A.harmonicPercussive.split(source,options);}
+    },
+    'audio.separateEditorial': {
+      description:'Split a recording into editable tonal and transient clips for one audio editorial session.',
+      inputs:{source:'audio',options},outputs:{value:'record',assets:'record',report:'record'},
+      run({source,options}) {return A.harmonicPercussive.session(source,options);}
+    },
     'audio.repairDialogue': {
       description: 'Repair clicks, hum, sibilance and localized spectral noise and audition the removed signal.',
       inputs:{source:'audio',options},outputs:{value:'audio',before:'audio',removed:'audio',report:'record'},
