@@ -59,6 +59,7 @@
       check(fields(row,['processor','sidechain']) && processor &&
         (key===undefined || processor.sidechain && fields(key,['strip','tap']) && id(key.strip) &&
           taps.includes(key.tap ?? 'post')),'Invalid mixer insert or sidechain assignment');
+      check(!processor.requiresSidechain || key,'Spectral sidechain needs a foreground sidechain tap');
       return {id:row.processor,processor,key:key && {strip:key.strip,tap:key.tap ?? 'post'}};
     }
     for (const [name,raw] of named(source.strips,48,'strips')) {
