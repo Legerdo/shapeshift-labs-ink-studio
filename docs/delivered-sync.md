@@ -79,6 +79,10 @@ Offsets outside `toleranceMs` (default 25) are labeled `audio-early` or
 `audio-late`. With `--fail-on-flags`, a flagged or unresolved check writes
 its report and exits with status 2.
 
+If the lead or delay is an editorial choice, use an
+[attention handoff audition](attention-handoff.md) to compare intentional
+placements against one fixed picture.
+
 ## Relay Press example
 
 Both versions schedule the relay at 1.000 seconds. The native picture

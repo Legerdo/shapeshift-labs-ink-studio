@@ -1,9 +1,10 @@
 /* Measure visible contact and audible attack from published media on a take clock. */
 const fs=require('node:fs'), path=require('node:path');
 const PNG=require('./png.js'), WAV=require('./wav.js'), {json}=require('./asset-files.js');
+const {readTakePicture}=require('./take-picture.js');
 
 const format='ink-studio/delivered-sync-check', reportFormat='ink-studio/delivered-sync-report';
-const maxFrame=1e9, maxFrames=12000, maxWindow=720;
+const maxFrame=1e9, maxWindow=720;
 const read=file=>JSON.parse(fs.readFileSync(file,'utf8'));
 
 function analyze(file,kit) {
@@ -24,28 +25,8 @@ function analyze(file,kit) {
     id(name) && fields(row,['file','startSample']) && (row.startSample===undefined ||
       integer(row.startSample,0,Number.MAX_SAFE_INTEGER))),'Invalid sync stem table');
 
-  let fps, firstFrame, frames, exportAudio;
-  if (typeof spec.picture==='string') {
-    const owner=source(recipe,spec.picture), report=read(owner);
-    const av=report?.format==='ink-studio/audiovisual-export';
-    const clip=av ? report.picture : report;
-    check(report?.version===1 && clip?.format==='ink-studio/graph-clip' && Array.isArray(clip.frames) &&
-      integer(clip.frames.length,1,maxFrames) && clip.to===clip.from+clip.frames.length &&
-      clip.frames.every((row,i)=>row?.frame===clip.from+i && typeof row.file==='string'),
-    'Use a graph clip report or an audiovisual export with numbered picture frames');
-    ({fps,from:firstFrame}=clip);
-    frames=clip.frames.map(row=>source(owner,row.file));
-    if (av) exportAudio={file:source(owner,report.audio?.file),startSample:report.audio?.startSample};
-  } else {
-    check(fields(spec.picture,['fps','firstFrame','frames']) && Array.isArray(spec.picture.frames) &&
-      integer(spec.picture.frames.length,1,maxFrames),'Sync picture needs numbered PNGs and a frame rate');
-    fps=spec.picture.fps;
-    firstFrame=spec.picture.firstFrame ?? 0;
-    frames=Array.from(spec.picture.frames,name=>source(recipe,name));
-  }
-  const rate=T.read(fps), frameTime=frame=>T.div(T.read(frame),rate);
-  check(finite(T.seconds(rate),1,240) && integer(firstFrame,0,maxFrame-frames.length),
-    'Sync picture needs 1 to 240 fps and a bounded first frame');
+  const {rate,firstFrame,frames,exportAudio}=readTakePicture(spec.picture,recipe,kit,file=>inputs.add(file));
+  const frameTime=frame=>T.div(T.read(frame),rate);
   let pixelWork=0, audioWork=0;
   const loadedStems=new Map();
 
