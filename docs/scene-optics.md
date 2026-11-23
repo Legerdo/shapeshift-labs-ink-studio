@@ -569,6 +569,10 @@ The scaling changes the render submission while retaining the source world and o
 
 Headless `renderStats` includes submitted and omitted rows across raster passes, planar capture pixels, and local probe pixels. A lower particle fraction reduces draw work while the world continues to advance the authored effects.
 
+Use a [joint priority track](joint-load-priorities.md) to reserve subject
+draw rows and reduce particles on the same take interval as a protected
+spatial sound cue.
+
 ## Ordered ink coverage
 
 `InkVeil.footprint(bounds, size, signedDistance, feather)` bakes an R8 mask

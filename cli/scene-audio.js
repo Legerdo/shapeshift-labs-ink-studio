@@ -42,6 +42,7 @@ function createSceneAudio(definition, { kit = require('../index.js').load(), res
   const occurrenceOf = event => K.world.timedEvents.timeOf(event) ??
     (['music-transition','music-cue'].includes(event.kind) ? event.time : undefined);
   const mixer = spatial === undefined ? null : K.world.spatialAudio.create(spatial);
+  const priorities=mixer?.jointPriority ? K.jointPriority.forSamples(mixer.jointPriority,sampleRate,T) : undefined;
   const binauralProfile=mixer?.binauralProfile;
   const binauralPlan=binauralProfile&&Binaural.prepare(binauralProfile,sampleRate);
   const clock = K.timeDomains.take({ sampleRate });
@@ -523,7 +524,7 @@ function createSceneAudio(definition, { kit = require('../index.js').load(), res
         }
       }
     }
-    const allocation=mixer?.voiceBudget&&planWorldVoices(voices,resolve,{end,sampleRate,policy:mixer.voiceBudget,crowd});
+    const allocation=mixer?.voiceBudget&&planWorldVoices(voices,resolve,{end,sampleRate,policy:mixer.voiceBudget,crowd,priorities});
     if (crowd&&(selection?.kind!=='world'||selection.name==='procedural/voice-aggregation')){
       const texture=crowd.tracks(audio=>{
         const id=Symbol('voice aggregation');
@@ -584,7 +585,7 @@ function createSceneAudio(definition, { kit = require('../index.js').load(), res
 }
 
 function readSceneAudio(file, { kit = require('../index.js').load(), onFile = () => {}, recordedOnly = false,
-  additions, maxPlanBytes, ...graphOptions } = {}) {
+  additions, maxPlanBytes, jointPriority, ...graphOptions } = {}) {
   const source = path.resolve(file), folder = path.dirname(source), K=kit.KIT;
   const packAPI=K.world.soundPacks, stat=fs.statSync(source);
   if(!stat.isFile()||stat.size>packAPI.maxDocumentBytes)throw new RangeError('Scene soundtrack exceeds its byte budget');
@@ -592,6 +593,8 @@ function readSceneAudio(file, { kit = require('../index.js').load(), onFile = ()
   onFile(source);
   if(document?.format===packAPI.format) {
     if(additions)throw new TypeError('Use a scene soundtrack with a worldSoundPacks import to add editorial tracks');
+    if(jointPriority && jointPriority!==false)
+      throw new TypeError('Import the world sound pack into a scene soundtrack to apply joint priorities');
     return SoundPacks.createSoundtrack(SoundPacks.open(bytes,K,undefined,document),kit);
   }
   if(maxPlanBytes!==undefined&&bytes.length>maxPlanBytes)throw new RangeError('Story audio plan exceeds its byte budget');
@@ -604,6 +607,14 @@ function readSceneAudio(file, { kit = require('../index.js').load(), onFile = ()
     throw new TypeError('Soundtrack needs named audio assets');
   const imported=packs.length ? packAPI.compose(definition.spatial,packs,Object.keys(assetsByName)) : null;
   if(imported)definition.spatial=imported.spatial;
+  let priority=jointPriority ?? definition.spatial?.jointPriority;
+  if(typeof priority==='string'){
+    const filename=path.resolve(folder,priority);
+    onFile(filename);
+    priority=read(filename);
+  }
+  if(priority && !definition.spatial)throw new TypeError('Joint priorities need a spatial soundtrack');
+  if(priority!==undefined && definition.spatial)definition.spatial={...definition.spatial,jointPriority:priority};
   const pin=definition.spatial?.binauralProfile;
   if (record(pin)&&Object.hasOwn(pin,'file')) {
     if (!fields(pin,['file','sha256'])||!token(pin.file)||!Binaural.hash(pin.sha256))

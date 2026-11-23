@@ -909,8 +909,15 @@ function createBackend(gl, toolkit, { specialize, reuseOrder, simpleOnly }) {
       const canStage = contract?.hasStages(world, frame) && !contract.compatibility(world, frame).length;
       const qualityDefinition = frame.passQuality ?? look.passQuality;
       if (qualityDefinition && !qualityAPI) throw new Error('Pass quality needs the Ink Studio KIT');
-      const quality = qualityAPI?.prepare(qualityDefinition);
-      const qualityKey = quality ? JSON.stringify([qualityDefinition, frame.silhouetteProtection ?? look.silhouetteProtection]) : '';
+      const priorityDefinition=frame.jointPriority ?? look.jointPriority;
+      const priorityAPI=toolkit.KIT?.jointPriority;
+      if(priorityDefinition && !priorityAPI)throw new Error('Joint priorities need the Ink Studio KIT');
+      const priority=priorityAPI?.prepare(priorityDefinition);
+      const priorityWindow=priority && priorityAPI.at(priority.windows,t);
+      let quality=qualityAPI?.prepare(qualityDefinition);
+      if(priorityWindow)quality=qualityAPI.prioritize(quality,priorityWindow.picture);
+      const qualityKey=quality ? JSON.stringify([qualityDefinition,frame.silhouetteProtection ?? look.silhouetteProtection,
+        priorityWindow?.picture]) : '';
       const cutawayDefinition = frame.cutaway ?? look.cutaway;
       if (cutawayDefinition && !cutawayAPI) throw new Error('Cutaways need the Ink Studio KIT');
       const cutaway = cutawayAPI?.prepare(cutawayDefinition);
@@ -1990,13 +1997,13 @@ function createBackend(gl, toolkit, { specialize, reuseOrder, simpleOnly }) {
         const { raw, outline, dither, scale, clean, lineClean, colored, tone, edges, water, time, skyTime, cameraTime,
           stepAnimation, artDirection, renderStages, strictContract, environment, colorClusters, boundaryCels,
           stableTransparency, resetTransparency, stableDetail, stable, ditherSpace, engraving, engravingLight, screenPrint, brushwork,
-          passQuality, silhouetteProtection, scalePreviews } = frame;
+          passQuality, silhouetteProtection, jointPriority, scalePreviews } = frame;
         const expand = portalReconstructionInstances[depth] ??= createExpandedInstances();
         const destination = reconstructFrame(portal.destination, { raw, outline, dither, scale, clean, lineClean, colored, tone,
           edges, water, time, skyTime, cameraTime, stepAnimation, artDirection, renderStages, strictContract,
           environment, colorClusters, boundaryCels, stableTransparency, resetTransparency, stableDetail, stable,ditherSpace,
           engraving,engravingLight,screenPrint,brushwork,passQuality,
-          silhouetteProtection, scalePreviews, atmosphere: frame.atmosphere, coverageAware: frame.coverageAware,
+          silhouetteProtection, jointPriority, scalePreviews, atmosphere: frame.atmosphere, coverageAware: frame.coverageAware,
           reflections: frame.reflections, ...portal.destinationFrame,
           ...(reflection && { water: false, reflections: false, [hybridReflection]: frame[hybridReflection] }),
           curveMode: portal.destinationFrame?.curveMode ?? frame.curveMode,

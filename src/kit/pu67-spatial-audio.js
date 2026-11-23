@@ -60,7 +60,7 @@
     const {binauralProfile:profile,...rest}=definition;
     const config=copy(rest);
     const binauralProfile=profile===undefined?undefined:InkBinaural.compile(profile);
-    check(keys(config,['cues','emitters','bindings','materials','surface','distance','occlusion','propagationDelay','soundFamilies','soundSeed','contactLoops','processing','soundReferenceDb','voiceBudget','earlyReflections','roomResponse','radiationProfiles','propagation']),
+    check(keys(config,['cues','emitters','bindings','materials','surface','distance','occlusion','propagationDelay','soundFamilies','soundSeed','contactLoops','processing','soundReferenceDb','voiceBudget','jointPriority','earlyReflections','roomResponse','radiationProfiles','propagation']),
       'Invalid spatial audio settings');
     const distance=distanceSettings(config.distance), cueList=table(config.cues??{},512,'cues',cueName);
     const {propagationDelay=false,surface,soundReferenceDb=70}=config;
@@ -68,6 +68,8 @@
     check(W.soundEvents.levelOK(soundReferenceDb),'Invalid world sound playback reference level');
     const processor=config.processing===undefined?null:W.spatialSoundProcessing.compile(config.processing);
     const voiceBudget=config.voiceBudget===undefined?undefined:WorldVoiceBudget.compile(config.voiceBudget);
+    const jointPriority=K.jointPriority.prepare(config.jointPriority);
+    check(!jointPriority||voiceBudget,'Joint priorities need a spatial voice budget');
     const reflections=config.earlyReflections===undefined||config.earlyReflections===false?null:
       W.earlyReflections.compile(config.earlyReflections);
     const radiationProfiles=new Map(table(config.radiationProfiles??{},128,'radiation profiles',id)
@@ -94,6 +96,8 @@
       return [name,{...spec,gain:spec.gain??1,pitch:spec.pitch??1,propagation:travel.settings(spec.propagation),
         distance:distanceSettings(spec.distance,distance),occlusion:spec.occlusion??true}];
     }));
+    if(jointPriority)for(const {sound} of jointPriority.windows)for(const id of sound.cues)
+      check(cues.has(id),'Unknown spatial cue in joint priorities: '+id);
     const emitters=table(config.emitters??{},128,'emitters').map(([name,row])=>{
       check(keys(row,['cue','at','gain','offset','radiation','propagation'])&&validRadiation(row.radiation)&&cues.has(row.cue)&&(row.at===undefined||selector(row.at))&&
         finite(row.gain??1,0,16)&&finite(row.offset??0,0,1e9),'Invalid audio emitter '+name);
@@ -446,8 +450,10 @@
             ...(cues.get(item.cue)?.propagation&&{onset:item.time})},shots);
       }
       const contactChanges=sustained?.changes.map(change=>({...change,voice:mix(query,ear,change.voice)}));
+      const jointWindow=jointPriority&&K.jointPriority.at(jointPriority.windows,time);
       const state=freeze(copy({time,listener:ear&&{position:ear.position,forward:ear.forward,up:ear.up},active,cues:shots,
-        ...(voiceBudget&&{voiceBudget}),...(contactChanges?.length&&{contactChanges}),
+        ...(voiceBudget&&{voiceBudget}),...(jointWindow&&{jointPriority:{id:jointWindow.id,sound:jointWindow.sound}}),
+        ...(contactChanges?.length&&{contactChanges}),
         ...(roomResponse&&{roomResponse:{...roomResponse.definition,...roomResponse.sample(ear?.position)}})}));
       return binauralProfile?Object.freeze({...state,binauralProfile}):state;
     }
@@ -460,7 +466,7 @@
         { cue, at, gain, pitch, exclude, object, audioProfile, routingCue, audition, captureSource, radiation,
           propagation:travel.settings(propagation),onset,mode },motion,time??0);
     }
-    return Object.freeze({frame,cue,createPlayback,voiceBudget,...(binauralProfile&&{binauralProfile}),...(roomResponse&&{roomResponse:roomResponse.definition})});
+    return Object.freeze({frame,cue,createPlayback,voiceBudget,...(jointPriority&&{jointPriority}),...(binauralProfile&&{binauralProfile}),...(roomResponse&&{roomResponse:roomResponse.definition})});
   }
   W.spatialAudio=Object.freeze({create});
   W.binauralProfile=Object.freeze({compile:InkBinaural.compile,describe:InkBinaural.describe});
