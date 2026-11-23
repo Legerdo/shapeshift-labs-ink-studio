@@ -37,6 +37,9 @@ function breakwaterWarden({KIT:K,makeBuilder,makeSculpt}) {
     const copper={r:[13,14,15,16,17]}, indigo={r:[0,21,22,23,24]}, stone={r:[1,2,3,4,5]},
       cloth={r:[21,22,23,24,25]}, skin={r:[22,23,24,25,26]},
       lantern={r:[17,18,19,20,31],em:true}, cool={r:[27,28,29,30,31],em:true};
+    if (controls?.boundaryShot) for (const [material,name] of [[steel,'steel'],[teal,'enamel'],[gold,'brass'],
+      [copper,'copper'],[indigo,'indigo'],[stone,'stone'],[cloth,'cloth'],[skin,'skin'],[lantern,'lantern'],[cool,'visor']])
+      material.materialId=name;
     const box=(p,h,mat,tag,res=.047,rd=.05)=>S.box(p,h,mat,{tag,objectId:tag,res,rd});
     const ball=(p,r,mat,tag,res=.047)=>S.ball(p,r,mat,{tag,objectId:tag,res});
     const tube=(p,r,mat,tag,res=.047)=>S.tube(p,r,r,mat,{tag,objectId:tag,res});

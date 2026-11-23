@@ -160,6 +160,7 @@ module.exports = {
   exportGlb: require('./cli/export-glb.js'),
   ...require('./cli/gltf-asset.js'),
   render: require('./cli/render.js').render,
+  renderBoundaryShot: require('./cli/pixel-boundary-shot.js').shot,
   pickSurface: require('./src/art-passes.js').pick,
   fitShotLighting: require('./cli/shot-light-fit.js').fitShotLighting,
   fitNativeLighting: require('./cli/native-lighting-approval.js').fitNativeLighting,

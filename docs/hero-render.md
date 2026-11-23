@@ -9,6 +9,8 @@ node cli/ink-studio.js render examples/hero-render/warden-relay.js \
 
 Set `S.keepRenderSdf = true` before the sculpt bake and `look.sdfAssist = { posed: true }` on its world. The current bone table, including camera-specific pose corrections, moves the retained fields and their subtractors. Tag a hidden subtractor with the same tag as the part it cuts. For primitives whose rows have different skin weights or separate corrective bones, the renderer uses the original splat path. Transparent, emitting and unsupported moving materials also use their original path. Use `rules` to limit tracing to selected objects, materials or world-space regions. [SDF assist settings](sdf-assist.md)
 
+[Pixel boundaries across a shot](pixel-boundaries.md) carry the posed surface evidence into a shared native-grid decision across frames.
+
 ## Bake traced fill
 
 ```sh
