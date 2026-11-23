@@ -924,6 +924,13 @@ function buildPreview(id = pos[0], options) {
   return Preview.override(world, opt, lib());
 }
 const previewPasses = () => require('./look-preview.js').preview(opt);
+function outputPalette() {
+  const file = opt['output-palette'];
+  if (file === undefined) return image => image;
+  if (typeof file !== 'string' || opt.text) die('Use --output-palette policy.json on raster renders or clips');
+  const policy = JSON.parse(fs.readFileSync(path.resolve(file), 'utf8'));
+  return require('./sequence-palette.js').prepareOutputPalette(policy);
+}
 const reviewSidecars = diagnostics => [...(diagnostics?.suffixes ?? []), ...(opt.text ? ['.txt'] : [])];
 const textSidecar = file => file.replace(/\.(?:a?png)$/i, '') + '.txt';
 function sceneEmbedConfig() {
@@ -1018,6 +1025,8 @@ const CMD = {
         '  palette weather <scene> [--plan file.json | --select JSON --times t1,t2] [--out directory]',
         '  palette stages <scene> [--select JSON] [--allowed JSON] [--out directory]   review paint, lighting, grade and resolve',
         '  palette compare <scene|checkpoint> <palettes.json> [--out directory]   apply alternatives to one captured shot',
+        '  palette sequence <plan.json> [--out directory]   allocate one pinned palette across multiple shots',
+        '  render/clip output: --output-palette policy.json   resolve the final raster to a shared palette',
         '  palette save-look <approved.json> [--pack pack.json] [--out pack.json]   save approved palette findings as a look',
         '  palette check <scene> <plan.json> [--out directory]   export a PNG board and check palette assertions',
         '  palette chart <chart.json> [--type chart] [--format png|data]   export an indexed swatch, bar or pair chart',
@@ -1469,6 +1478,14 @@ const CMD = {
     return require('./ornament.js')(pos, opt, lib(), outputFile);
   },
   palette() {
+    if (pos[0] === 'sequence') {
+      if (pos.length !== 2 || Object.keys(opt).some(key => key !== 'out') || opt.out === true)
+        die('Use palette sequence <plan.json> [--out directory]');
+      const directory = outputFile('sequence-palette');
+      const report = require('./sequence-palette-command.js').run(pos[1], directory, { build, pose });
+      console.log(report.palette.length + ' shared swatches across ' + report.shots.length + ' shots. Wrote', directory);
+      return;
+    }
     if (pos[0] === 'plot') return require('./palette-plot.js')(pos.slice(1), opt, lib(), outputFile);
     if (pos[0] === 'fit') return require('./palette-fit.js').fit(pos.slice(1), opt, lib(), outputFile);
     if (pos[0] === 'dither-review') return require('./palette-fit.js').review(pos.slice(1),opt,lib(),outputFile);
@@ -2213,6 +2230,7 @@ const CMD = {
     Shot.replay(pos[1],{out:opt.out,root:opt.root,entry:__filename});
   },
   render() {
+    const applyPalette = outputPalette();
     const w = buildPreview(), diagnostics = previewPasses(),
       t = num('t', 0);
     const suffixes = reviewSidecars(diagnostics);
@@ -2231,7 +2249,7 @@ const CMD = {
       shot?.finish(f,{suffixes});
       return;
     }
-    const output = save(w.id + '.png', R.upscale(im, opt.px1 ? 1 : im.px));
+    const output = save(w.id + '.png', R.upscale(applyPalette(im), opt.px1 ? 1 : im.px));
     diagnostics?.write(output, { times: [t] });
     shot?.finish(output,{suffixes});
   },
@@ -3123,6 +3141,7 @@ const CMD = {
     save(w.id + '-turn.png', R.grid(imgs, num('cols', 4), labs));
   },
   clip() {
+    const applyPalette = outputPalette();
     const join = onOffOption('loop-join') && require('./loop-join.js');
     const w = buildPreview(), diagnostics = previewPasses(),
       fps = num('fps', 12),
@@ -3146,11 +3165,11 @@ const CMD = {
       const im = replay ? R.sequenceOutput(frame, ()=>replay.sample(t, draw)) : draw(t, undefined, k / (n - 1));
       diagnostics?.capture(im, opt.px1 ? 1 : im.px);
       ts.push(t);
-      frames.push(displayFrame(im, w));
+      frames.push(displayFrame(applyPalette(im), w));
     }
     const end = from + n / fps;
     const audit = join && join.inspect({ first: frames[0], penultimate: frames[n - 2], last: frames[n - 1],
-      endpoint: displayFrame(replay ? replay.sample(end, draw) : draw(end, undefined, 1), w), from, fps, count: n });
+      endpoint: displayFrame(applyPalette(replay ? replay.sample(end, draw) : draw(end, undefined, 1)), w), from, fps, count: n });
     fs.mkdirSync(path.dirname(f), { recursive: true });
     PNG.animate(f, frames, fps);
     if (audit) {

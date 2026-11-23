@@ -204,6 +204,7 @@ module.exports = {
   reviewPaletteWeather: require('./cli/palette-weather.js').reviewPaletteWeather,
   reviewPaletteStages: require('./cli/palette-stages.js').reviewPaletteStages,
   compareShotPalettes: require('./cli/palette-compare.js').compareShotPalettes,
+  allocateSequencePalette: require('./cli/sequence-palette.js').allocateSequencePalette,
   compareCurveModes: require('./cli/curve-compare.js').compareCurveModes,
   writeCurveComparison: require('./cli/curve-compare.js').writeCurveComparison,
   reviewCurveQuality: require('./cli/curve-quality-review.js').reviewCurveQuality,
