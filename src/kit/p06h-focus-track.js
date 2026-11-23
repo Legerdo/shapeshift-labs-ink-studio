@@ -1,6 +1,7 @@
 /* One musical cue track for subject contrast and post-insert mix perspective. */
 (function (P) {
   const T=P.takeTime, {fields,record,finite,id,check}=P.musicInstruments;
+  const minGainDb=-60, maxGainDb=12;
 
   function prepare(source) {
     if (source === undefined || source === false) return null;
@@ -22,7 +23,7 @@
       }
       check(record(mix) && Object.keys(mix).length<=48,'Invalid mixer strip table for focus subject '+name);
       for (const [strip,value] of Object.entries(mix)) {
-        check(id(strip) && finite(value,-60,12),'Invalid focus gain in dB for strip '+strip);
+        check(id(strip) && finite(value,minGainDb,maxGainDb),'Invalid focus gain in dB for strip '+strip);
         strips.add(strip);
       }
       subjects.set(name,{id:name,picture:visual,mix:new Map(Object.entries(mix))});
@@ -80,7 +81,9 @@
     // Neighbors around each corner retain both instantaneous cuts and sub-sample fades.
     const points=[...boundaries].sort((a,b)=>a-b).map(sample=>{
       const {from,to,weight}=at(track,sample/rate);
-      return {at:sample,value:gain(from)*(1-weight)+gain(to)*weight};
+      const a=gain(from), b=gain(to);
+      const value=Math.max(minGainDb,Math.min(maxGainDb,a+(b-a)*weight));
+      return {at:sample,value};
     });
     return {unit:'samples',curve:'linear',points};
   }

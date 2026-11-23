@@ -73,6 +73,11 @@ test('sub-sample timing remains on the same side of a hard cue in picture and au
   ]});
   const lane=focusTrack.mixLane(plan,'room',rate);
   assert.deepEqual(lane.points,[{at:0,value:0},{at:1,value:-12},{at:2,value:0}]);
+  const equalGains=focusTrack.prepare({
+    id:'quiet',subjects:{a:{mix:{room:-60}},b:{mix:{room:-60}}},
+    cues:[{beat:0,subject:'a',fade:.00037},{beat:.00037,subject:'b',fade:.0109},{beat:2,subject:null}]
+  });
+  assert.equal(focusTrack.mixLane(equalGains,'room',rate).points.find(row=>row.at===2).value,-60);
 });
 
 test('the normal native picture path grades the named subject with independent static protection',()=>{
