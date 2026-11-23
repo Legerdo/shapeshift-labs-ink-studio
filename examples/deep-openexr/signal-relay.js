@@ -4,7 +4,7 @@ module.exports=({KIT:K,makeBuilder})=>({
   build(seed) {
     const B=makeBuilder(seed,[0x101922,0x344b54,0x76c9c4,0xe6ab60]);
     const cards=[];
-    function plate({id,z,center,size,grid,angle=0,paint}) {
+    function plate({id,z,center,span,grid,angle=0,paint}) {
       const [gw,gh]=grid, c=Math.cos(angle), s=Math.sin(angle);
       const width=Math.ceil(gw*Math.abs(c)+gh*Math.abs(s)), height=Math.ceil(gh*Math.abs(c)+gw*Math.abs(s));
       const color=new Uint8Array(width*height*4);
@@ -17,12 +17,12 @@ module.exports=({KIT:K,makeBuilder})=>({
         const [rgb,alpha=255]=sample;
         color.set([rgb>>16,(rgb>>8)&255,rgb&255,alpha],(y*width+x)*4);
       }
-      const atlas=K.sprite.atlas({metadata:{width,height,unitsPerPixel:size[0]/gw,
+      const atlas=K.sprite.atlas({metadata:{width,height,unitsPerPixel:span/gw,
         frames:[{rect:{x:0,y:0,width,height}}]},images:{color}});
       cards.push(K.sprite.placeAtlas({atlas,at:[...center,z],mode:'card',lighting:false,objectId:id,materialId:id+' finish'}));
     }
 
-    plate({id:'instrument housing',z:-2.15,center:[0,0],size:[5.67,3.56],grid:[174,108],paint(x,y){
+    plate({id:'instrument housing',z:-2.15,center:[0,0],span:5.67,grid:[174,108],paint(x,y){
       const edge=Math.min(x,173-x,y,107-y), diagonal=Math.min(x,173-x)+Math.min(y,107-y);
       if(diagonal<6) return;
       if(edge<2)return [0x121b26];
@@ -44,7 +44,7 @@ module.exports=({KIT:K,makeBuilder})=>({
       if(y>7&&y<11&&x>35&&x<145&&x%7<4) return [0x77989a];
       return [(x*11+y*7)%23===0?0x354859:0x2c3e4c];
     }});
-    plate({id:'amber rear sheet',z:-.84,center:[.53,-.10],size:[3.98,2.43],grid:[121,73],angle:-.10,paint(x,y){
+    plate({id:'amber rear sheet',z:-.84,center:[.53,-.10],span:3.98,grid:[121,73],angle:-.10,paint(x,y){
       const dx=Math.min(x,120-x),dy=Math.min(y,72-y),edge=Math.min(dx,dy);
       if(dx+dy<7)return;
       if(edge<2)return [0x492f36,225];
@@ -60,7 +60,7 @@ module.exports=({KIT:K,makeBuilder})=>({
       if((x+2*y)%24===0)return [0xd88855,161];
       return [(x+y)%8===0?0xe7a25f:0xda8b58,125];
     }});
-    plate({id:'teal front sheet',z:1.1,center:[-.57,.19],size:[3.88,2.19],grid:[118,67],angle:.105,paint(x,y){
+    plate({id:'teal front sheet',z:1.1,center:[-.57,.19],span:3.88,grid:[118,67],angle:.105,paint(x,y){
       const dx=Math.min(x,117-x),dy=Math.min(y,66-y),edge=Math.min(dx,dy);
       if(dx+dy<9)return;
       if(edge<2)return [0x143e50,232];

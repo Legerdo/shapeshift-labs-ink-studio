@@ -207,7 +207,9 @@ function exportDeepEXR(world, { out, view = {}, times = [view.time ?? view.t ?? 
   if (!native) throw new RangeError('Deep OpenEXR requires positive integer image dimensions and art pixel size');
   const nativeWidth=Math.ceil(width/px), nativeHeight=Math.ceil(height/px);
   const area = nativeWidth*nativeHeight;
-  const limit = layers ?? Math.min(maxLayers,Math.max(1,Math.floor(maxSlots/area)));
+  // A reflected export retains both the main and mirrored capture.
+  const captureArea = area*(reflection===undefined ? 1 : 2);
+  const limit = layers ?? Math.min(maxLayers,Math.max(1,Math.floor(maxSlots/captureArea)));
   if (nativeWidth>maxDimension || nativeHeight>maxDimension || area*limit>maxSlots)
     throw new RangeError('Deep OpenEXR exceeds the native art-grid capture budget. Reduce dimensions or layers.');
   const file = path.resolve(out), single = /\.exr$/i.test(file);
