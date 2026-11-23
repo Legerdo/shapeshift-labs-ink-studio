@@ -220,13 +220,15 @@
         const beat=round(row.beat), beatStyle=row.played ? {delay:0,accent:1} : grooveAt(track.groove,row.beat);
         const style=G.perform(row.played ? [] : track.gestures,row.beat,row.play,track.color), play=style.play;
         const phrase=F.at(track.phrases,beat), authoredNote=phrase?.overrides.get(F.noteKey(row));
+        const fitted=authoredNote?.fit;
         if (authoredNote?.articulation!==undefined) style.play={...play,articulation:authoredNote.articulation};
         const inherited=row.played ? null : performance?.style(name,style.play.articulation,beat,clock);
         const phrasing=row.played ? null : ensemble?.style(name,beat,row.midi,clock);
         const authored=row.time+beatStyle.delay+(play.delay ?? 0)+(inherited?.delay ?? 0)+(phrasing?.delay ?? 0)+
-          (authoredNote?.delay ?? 0);
+          (fitted ? 0 : authoredNote?.delay ?? 0);
         const proposed=performance?.anchor(row.beat) ? row.time : Math.max(0,authored);
-        const velocity=clamp(row.velocity*beatStyle.accent*style.accent*(inherited?.accent ?? 1)*(phrasing?.accent ?? 1)*(authoredNote?.accent ?? 1));
+        const velocity=clamp(row.velocity*beatStyle.accent*style.accent*(inherited?.accent ?? 1)*(phrasing?.accent ?? 1)*
+          (fitted ? 1 : authoredNote?.accent ?? 1));
         const audible=proposed<end && !silent(round(proposed)) && velocity>0;
         drafts.push({row,style,inherited,phrasing,authored,proposed,audible,velocity,authoredNote,adjustment:0});
       }
@@ -247,7 +249,7 @@
         const anchored=performance?.anchor(row.beat);
         // Played clips skip automatic groove, but explicit take edits still apply.
         const performed=anchored ? row.time : row.played ?
-          Math.max(row.clipLaunch ?? 0,row.time+(authoredNote?.delay ?? 0)) :
+          Math.max(row.clipLaunch ?? 0,row.time+(authoredNote?.fit ? 0 : authoredNote?.delay ?? 0)) :
           follow ? follow(proposed,row.beat) : proposed;
         const delay=anchored || !track.timingEdits.size ? 0 : track.timingEdits.get(P.musicTimingEdits.key(row))?.delay ?? 0;
         const time=delay ? Math.max(row.clipLaunch ?? 0,performed+delay) : Math.max(0,performed);
@@ -303,6 +305,9 @@
     applyChokes(tracks,events);
     for (const name of names) {
       const track=tracks[name];
+      if (track.phrases.some(phrase=>phrase.fit))
+        P.musicPhraseContour.apply(track.phrases,events[name],source.tracks[name].clips,clock,
+          cue?.perTrack[name],performance?.anchor);
       if (track.performance) P.musicPhrasing.releases(events[name]);
       if (track.timingEdits.size) for (const note of events[name]) {
         const offset=track.timingEdits.get(P.musicTimingEdits.key(note))?.offset;
