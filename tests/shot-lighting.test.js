@@ -200,14 +200,16 @@ test('painted lighting CLI writes a source-bound painter and a portable fitted p
   const { plan } = JSON.parse(page.match(/^const data = (.*);$/m)[1]);
   assert.match(plan.sourceSha256, /^[\da-f]{64}$/);
   plan.regions = [{ id: 'wall', color: '#656c77', spans: [[18, 18, 5]] }];
-  fs.writeFileSync(path.join(dir, 'targets.json'), JSON.stringify(plan));
+  fs.writeFileSync(path.join(dir, 'targets.json'), JSON.stringify({ ...plan, sourceSha256: undefined }));
   run('shot', 'light-fit', 'scene.json', '--targets', 'targets.json', '--out', 'fit', '--evaluations', '1', '--interactive');
   const fit = JSON.parse(fs.readFileSync(path.join(dir, 'fit/fit.json')));
   assert.equal(fit.sourceSha256, plan.sourceSha256);
   assert.deepEqual(fit.grid, [48, 36]);
   const fitted = fs.readFileSync(path.join(dir, 'fit/index.html'), 'utf8');
   assert.match(fitted, /Download fitted rig/);
-  const { candidates } = JSON.parse(fitted.match(/^const data = (.*);$/m)[1]);
+  const fittedData = JSON.parse(fitted.match(/^const data = (.*);$/m)[1]);
+  assert.equal(fittedData.plan.sourceSha256, fit.sourceSha256);
+  const { candidates } = fittedData;
   assert.equal(candidates.length, 1);
   assert.match(candidates[0].image, /^data:image\/png;base64,/);
   assert.deepEqual(candidates[0].rig, JSON.parse(fs.readFileSync(path.join(dir, 'fit/rig.json'))));

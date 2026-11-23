@@ -27,7 +27,8 @@ function writeFit(folder, plan, { rig, before, after, report }, candidates) {
   write(path.join(folder, 'before.png'), start);
   write(path.join(folder, 'fitted.png'), fitted);
   json(path.join(folder, 'fit.json'), report);
-  write(path.join(folder, 'index.html'), page({ plan, rig, before: url(start), after: url(fitted),
+  const boundPlan = { ...plan, sourceSha256: report.sourceSha256 };
+  write(path.join(folder, 'index.html'), page({ plan: boundPlan, rig, before: url(start), after: url(fitted),
     regions: report.regions, evaluations: report.work.evaluations, candidates }));
 }
 
