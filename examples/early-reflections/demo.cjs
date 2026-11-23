@@ -85,7 +85,8 @@ const mixed=WAV.encode({samples:comparison,channels:2,sampleRate},{encoding:'pcm
 clips.compare=embedAudio(mixed);
 write(path.join(out,'comparison.wav'),mixed);
 write(path.join(out,'dry-strike-mono.wav'),WAV.encode(tone,{encoding:'pcm24'}));
-const report={title:'The Loading Bay',sampleRate,source,listener,bounds,labels,sequence:['open','wall','open','wall','bay'],cases};
+const report={title:'The Loading Bay',sampleRate,source,listener,bounds,labels,cases,
+  sequence:['open','wall','open','wall','bay'],sequenceStep:(sequenceAudio[0].length+gap)/(sampleRate*2)};
 json(path.join(out,'reflection-paths.json'),report);
 const template=fs.readFileSync(path.join(__dirname,'review.html'),'utf8');
 write(path.join(out,'index.html'),template.replace('/*EARLY_REFLECTION_DATA*/',()=>JSON.stringify({report,clips}).replaceAll('<','\\u003c')));

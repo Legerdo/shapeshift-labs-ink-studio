@@ -101,12 +101,14 @@ function waveform(row){
     wave.stroke();
   }
 }
-function show(id,play=false){
+function show(id,play=false,comparison=false){
   const row=report.cases.find(item=>item.id===id);
   for(const [key,button] of buttons)button.setAttribute('aria-pressed',String(id===key));
-  if(audio.dataset.mode!==id){audio.src=clips[id];audio.dataset.mode=id;}
-  else if(play)audio.currentTime=0;
-  get('playing-label').textContent=row.label;
+  if(!comparison){
+    if(audio.dataset.mode!==id){audio.src=clips[id];audio.dataset.mode=id;}
+    else if(play)audio.currentTime=0;
+  }
+  get('playing-label').textContent=comparison?'A/B · '+row.label:row.label;
   map(row);waveform(row);
   if(!row.taps.length){
     const tr=document.createElement('tr'),td=document.createElement('td');
@@ -126,10 +128,17 @@ for(const row of report.cases){
   button.textContent=row.label;button.addEventListener('click',()=>{show(row.id,true);audio.play();});
   buttons.set(row.id,button);get('cases').append(button);
 }
+let comparisonIndex;
 get('compare').addEventListener('click',()=>{
-  audio.src=clips.compare;audio.dataset.mode='compare';audio.play();
-  for(const button of buttons.values())button.setAttribute('aria-pressed','false');
-  get('playing-label').textContent='Open → Wall → Open → Wall → Covered';
+  audio.src=clips.compare;audio.dataset.mode='compare';
+  comparisonIndex=0;
+  show(report.sequence[0],false,true);
+  audio.play();
+});
+audio.addEventListener('timeupdate',()=>{
+  if(audio.dataset.mode!=='compare')return;
+  const index=Math.min(report.sequence.length-1,Math.floor(audio.currentTime/report.sequenceStep));
+  if(index!==comparisonIndex){comparisonIndex=index;show(report.sequence[index],false,true);}
 });
 get('download').href=URL.createObjectURL(new Blob([JSON.stringify(report,null,2)+'\n'],{type:'application/json'}));
 show('wall');
