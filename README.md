@@ -397,6 +397,8 @@ Shape the bass, mids, and treble an emitter sends toward the listener as its bod
 
 Choose which sources use physical arrival time and Doppler, with independent controls for delay and pitch. [Propagation delay and Doppler](docs/propagation-doppler.md)
 
+Synthesize breakaway, slip, and catch pulses from runtime contact load and friction. [Stick-slip contact synthesis](docs/stick-slip-audio.md)
+
 <!-- include: examples/puppet.js -->
 
 ```js

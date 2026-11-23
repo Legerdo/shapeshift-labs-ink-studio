@@ -8,7 +8,7 @@
   const fields=(row,allowed)=>record(row)&&Object.keys(row).every(key=>allowed.includes(key));
   const clamp=value=>Math.min(1,Math.max(0,value));
 
-  function compile(config,cues,locate){
+  function compile(config,cues,locate,seed){
     check(fields(config,['fields','interactions','attack','crossfade','release','response']),
       'Invalid continuous contact audio settings');
     const {fields:names=[],interactions,attack=.035,crossfade=.12,release=.16,response=.04}=config;
@@ -18,20 +18,21 @@
       'Invalid continuous contact audio settings');
     const rules=new Map();
     for(const [type,row] of Object.entries(interactions)){
-      check(fields(row,['cue','materials','speedForFullRate','loadForFullGain','rate']),
+      check(fields(row,['cue','materials','speedForFullRate','loadForFullGain','rate','stickSlip']),
         'Invalid continuous contact audio interaction '+type);
       const {cue,materials={},speedForFullRate=3,loadForFullGain=10,rate=[.55,1.65]}=row;
-      check(cues.has(cue)&&record(materials)&&Object.keys(materials).length<=256&&
+      const slip=row.stickSlip===undefined||row.stickSlip===false?undefined:W.stickSlip.compile(row.stickSlip);
+      check((cues.has(cue)||cue===undefined&&slip)&&record(materials)&&Object.keys(materials).length<=256&&
         Object.entries(materials).every(([material,name])=>token(material)&&cues.has(name))&&
         finite(speedForFullRate,.000001,1e12)&&finite(loadForFullGain,.000001,1e12)&&
         Array.isArray(rate)&&rate.length===2&&finite(rate[0],.0625,8)&&finite(rate[1],rate[0],8),
         'Invalid continuous contact audio interaction '+type);
-      rules.set(type,{cue,materials:new Map(Object.entries(materials)),speedForFullRate,loadForFullGain,rate});
+      rules.set(type,{cue,materials:new Map(Object.entries(materials)),speedForFullRate,loadForFullGain,rate,slip});
     }
 
     return function createPlayback(){
       const contacts=new Map(), voices=new Map(), seen=new Set();
-      let previous=0, serial=0;
+      let previous=0, serial=0, pulseSerial=0;
       function level(voice,time){
         return voice.end<=voice.start ? voice.target :
           K.mix(voice.from,voice.target,clamp((time-voice.start)/(voice.end-voice.start)));
@@ -47,9 +48,17 @@
 
       return function frame(time,query,events,observations){
         if(time<previous){
-          contacts.clear(); voices.clear(); seen.clear(); previous=0; serial=0;
+          contacts.clear(); voices.clear(); seen.clear(); previous=0; serial=0; pulseSerial=0;
         }
-        const changes=[];
+        const changes=[], pulses=[];
+        function releasePulses(contact,generated){
+          for(const {time,at,gain,pitch,pulse,speed,load,energy,cue,material} of generated){
+            check(pulses.length<2048,'Stick-slip pulses exceed their frame budget');
+            pulses.push({id:'stick-slip:'+(++pulseSerial),cue:'procedural/stick-slip',routingCue:cue,mode:'cue',at,gain,pitch,onset:time,
+              stickSlip:{...pulse,contact:contact.name,interaction:contact.interaction,speed,load,energy,
+                ...(material!==undefined&&{material})}});
+          }
+        }
         function note(voice,at,ended=false){
           check(changes.length<16384,'Continuous contact automation exceeds its frame budget');
           changes.push({time:at,voice:raw(voice,at),ended});
@@ -72,6 +81,7 @@
           const contact=contacts.get(key);
           if(!contact)return;
           contacts.delete(key);
+          if(contact.slip)releasePulses(contact,contact.slip.finish(time));
           for(const voice of contact.layers.values()){
             fade(voice,0,time,release,true);
             note(voice,time);
@@ -88,7 +98,7 @@
             return;
           }
           const reading=snapshot?row:{...old?.reading,...row};
-          const {at,material}=locate(query,reading);
+          const {at,material,friction}=locate(query,reading,Boolean(rule.slip));
           const speed=reading.speed??0, load=reading.load??rule.loadForFullGain;
           const motion=clamp(speed/rule.speedForFullRate);
           const pitch=K.mix(rule.rate[0],rule.rate[1],motion);
@@ -97,8 +107,16 @@
           const layers=old?.layers??new Map(), changed=old&&old.cue!==cue;
           if(!old) check(contacts.size<512,'Continuous contact limit exceeded');
           const contact={name,interaction,reading,snapshot,cue,layers};
+          if(old?.slip&&old.interaction!==interaction)releasePulses(old,old.slip.finish(time));
+          if(rule.slip){
+            contact.slip=old?.interaction===interaction?old.slip:W.stickSlip.contact(rule.slip,key,seed,rule.loadForFullGain);
+            const coefficient=[reading.friction,reading.surface?.friction,friction].find(value=>finite(value,0,4));
+            const measured=reading.load??W.spatialSoundSelection.normalLoad(reading);
+            releasePulses(contact,contact.slip.update({at,material,cue,speed,load:finite(measured,0,1e12)?measured:load,
+              friction:coefficient,frictionState:reading.frictionState},time));
+          }
           contacts.set(key,contact);
-          if(!layers.has(cue)){
+          if(cue!==undefined&&!layers.has(cue)){
             check(voices.size<2048,'Continuous contact voice limit exceeded');
             const id='contact:'+(++serial);
             const voice={id,cue,layers,offset:0,changedAt:time,rate:0,from:0,target:0,start:time,end:time};
@@ -164,7 +182,7 @@
         advance(time);
         previous=time;
         return {active:[...voices.values()].map(voice=>raw(voice,time)),
-          changes:changes.sort((a,b)=>a.time-b.time)};
+          changes:changes.sort((a,b)=>a.time-b.time),pulses:pulses.sort((a,b)=>a.onset-b.onset)};
       };
     };
   }
