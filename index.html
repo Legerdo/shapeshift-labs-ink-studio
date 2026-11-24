@@ -412,6 +412,75 @@
       transform: translateX(4px);
     }
 
+    /* All Examples Expandable Drawer */
+    .all-examples-details {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-bottom: 40px;
+      overflow: hidden;
+      transition: all 0.2s ease;
+    }
+    .all-examples-details[open] {
+      border-color: var(--border-light);
+    }
+    .all-examples-summary {
+      padding: 16px 20px;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--accent-teal);
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      user-select: none;
+      background: var(--bg-card-alt);
+    }
+    .all-examples-summary:hover {
+      color: var(--accent);
+      background: #172638;
+    }
+    .all-examples-content {
+      padding: 24px;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 28px;
+    }
+    .example-category-title {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 12px;
+      border-bottom: 1px solid #1c2e40;
+      padding-bottom: 6px;
+    }
+    .example-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .example-list li a {
+      font-size: 13px;
+      color: var(--text-main);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: all 0.15s ease;
+    }
+    .example-list li a:hover {
+      color: var(--accent-teal);
+      transform: translateX(4px);
+    }
+    .example-list li a span {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-dim);
+    }
+
     /* CLI Reference Box */
     .cli-box {
       background: var(--bg-card);
@@ -632,6 +701,88 @@
         <a class="demo-card-link" href="examples/material-controls.html">Test Materials <span>→</span></a>
       </div>
     </div>
+
+    <!-- Complete Examples Explorer (Expandable) -->
+    <details class="all-examples-details">
+      <summary class="all-examples-summary">
+        <span>📂 Browse All 42+ Standalone Example Web Demos</span>
+        <span>▼ Click to expand</span>
+      </summary>
+      <div class="all-examples-content">
+        <div>
+          <div class="example-category-title">🎮 Worlds & Physical Simulation</div>
+          <ul class="example-list">
+            <li><a href="examples/inkwell-rebirth/play.html">Inkwell Rebirth Player <span>play.html ↗</span></a></li>
+            <li><a href="examples/destruction.html">Structural Destruction <span>destruction.html ↗</span></a></li>
+            <li><a href="examples/ecology.html">Ecology & Growth <span>ecology.html ↗</span></a></li>
+            <li><a href="examples/cloth-review.html">Cloth Simulation <span>cloth-review.html ↗</span></a></li>
+            <li><a href="examples/materialisation.html">Splat Materialisation <span>materialisation.html ↗</span></a></li>
+            <li><a href="examples/motion-fx.html">Motion Particles <span>motion-fx.html ↗</span></a></li>
+            <li><a href="examples/motion-review.html">Motion Frame Review <span>motion-review.html ↗</span></a></li>
+            <li><a href="examples/authored-contacts.html">Authored Contacts <span>authored-contacts.html ↗</span></a></li>
+          </ul>
+        </div>
+
+        <div>
+          <div class="example-category-title">⚡ Rendering, Optics & FX</div>
+          <ul class="example-list">
+            <li><a href="examples/render-effects.html">Signal House & Filters <span>render-effects.html ↗</span></a></li>
+            <li><a href="examples/water-garden.html">Water Garden & Waves <span>water-garden.html ↗</span></a></li>
+            <li><a href="examples/water-bodies.html">Water Bodies Optics <span>water-bodies.html ↗</span></a></li>
+            <li><a href="examples/light-emitters.html">Emissive & Area Lights <span>light-emitters.html ↗</span></a></li>
+            <li><a href="examples/stippling.html">Blue-Noise Stippling <span>stippling.html ↗</span></a></li>
+            <li><a href="examples/screen-print.html">Screen-Print Halftone <span>screen-print.html ↗</span></a></li>
+            <li><a href="examples/painted-shadow-bands.html">Painted Shadow Bands <span>painted-shadow.html ↗</span></a></li>
+            <li><a href="examples/sprite-reconstruction.html">Sprite Reconstruction <span>sprite-reconstruct.html ↗</span></a></li>
+            <li><a href="examples/splat-footprints.html">Splat Footprints <span>splat-footprints.html ↗</span></a></li>
+            <li><a href="examples/render-grid.html">Multi-View Render Grid <span>render-grid.html ↗</span></a></li>
+          </ul>
+        </div>
+
+        <div>
+          <div class="example-category-title">🎨 Art, Materials & Color</div>
+          <ul class="example-list">
+            <li><a href="examples/mosaic-surfaces.html">Mosaic & Stained Glass <span>mosaic-surfaces.html ↗</span></a></li>
+            <li><a href="examples/turntable-shape.html">Turntable Lantern <span>turntable-shape.html ↗</span></a></li>
+            <li><a href="examples/material-controls.html">Physical Materials <span>material-controls.html ↗</span></a></li>
+            <li><a href="examples/engraving.html">Copperplate Engraving <span>engraving.html ↗</span></a></li>
+            <li><a href="examples/paper-relief.html">Paper Relief Shading <span>paper-relief.html ↗</span></a></li>
+            <li><a href="examples/paint-mixing.html">Subtractive Color Mixing <span>paint-mixing.html ↗</span></a></li>
+            <li><a href="examples/palette-recipes.html">Adaptive Palette Recipes <span>palette-recipes.html ↗</span></a></li>
+            <li><a href="examples/surface-brush.html">Surface Brushwork <span>surface-brush.html ↗</span></a></li>
+            <li><a href="examples/typography.html">Gaussian 3D Typography <span>typography.html ↗</span></a></li>
+          </ul>
+        </div>
+
+        <div>
+          <div class="example-category-title">📐 Procedural Curves & Fields</div>
+          <ul class="example-list">
+            <li><a href="examples/math-fields.html">Mathematical Fields <span>math-fields.html ↗</span></a></li>
+            <li><a href="examples/curve-families.html">Curve Families & Ribbons <span>curve-families.html ↗</span></a></li>
+            <li><a href="examples/curve-analysis.html">Curvature & Flow <span>curve-analysis.html ↗</span></a></li>
+            <li><a href="examples/contour-ribbons.html">Contour Ribbons <span>contour-ribbons.html ↗</span></a></li>
+            <li><a href="examples/voxel-surface.html">Voxel Surface Meshing <span>voxel-surface.html ↗</span></a></li>
+            <li><a href="examples/faceted-surfaces.html">Faceted Surfaces <span>faceted-surfaces.html ↗</span></a></li>
+            <li><a href="examples/randomness.html">Noise & Randomness <span>randomness.html ↗</span></a></li>
+            <li><a href="examples/thread-studies.html">Textile Fibers & Threads <span>thread-studies.html ↗</span></a></li>
+            <li><a href="examples/clip-sequence.html">Clip Sequence Transitions <span>clip-sequence.html ↗</span></a></li>
+          </ul>
+        </div>
+
+        <div>
+          <div class="example-category-title">🛠️ Interactive Tools & Camera</div>
+          <ul class="example-list">
+            <li><a href="examples/pixel-stamp-editor.html">Pixel Stamp Editor <span>pixel-stamp-editor.html ↗</span></a></li>
+            <li><a href="examples/shared-time-domains.html">Clockwork Pavilion <span>shared-time-domains.html ↗</span></a></li>
+            <li><a href="examples/cinematic-camera.html">Cinematic Camera Rigs <span>cinematic-camera.html ↗</span></a></li>
+            <li><a href="examples/directional-camera-impulses.html">Camera Shake & Impulses <span>camera-impulses.html ↗</span></a></li>
+            <li><a href="examples/pose-blocking.html">Keyframe Pose Blocking <span>pose-blocking.html ↗</span></a></li>
+            <li><a href="examples/target-inspection.html">Subpixel Inspection <span>target-inspection.html ↗</span></a></li>
+            <li><a href="examples/live-scene-hierarchy.html">Live Scene Hierarchy <span>scene-hierarchy.html ↗</span></a></li>
+          </ul>
+        </div>
+      </div>
+    </details>
 
     <!-- Quick Reference / Local Setup -->
     <div class="cli-box">
