@@ -746,6 +746,12 @@ npm run build</code>
 
           currentWorld = sceneEntry.build(sceneEntry.seed);
           currentWorld.id = sceneEntry.id;
+          window.currentWorld = currentWorld;
+
+          // In Slow Burn, ignite initial wood fire immediately so user sees flames & smoke right away
+          if (sceneEntry.id === 'burn' && currentWorld.lab?.fire) {
+            currentWorld.lab.fire.light([0.4, 0.4, 0.4], 0.9);
+          }
 
           // Camera initialization
           const c = currentWorld.cam || {};
@@ -775,19 +781,32 @@ npm run build</code>
     }
 
     function pokeDiorama(dirOverride) {
-      if (!currentWorld || !currentWorld.anim || !currentWorld.anim.poke) return;
+      if (!currentWorld || !currentWorld.anim) return;
 
       try {
         const snap = captureCamera(currentWorld, { camera: cam }, renderW, renderH);
         const { eye, back } = snap.pose;
         const dir = dirOverride || [-back[0], -back[1], -back[2]];
-        const hit = currentWorld.anim.poke(eye, dir);
+        let hit = currentWorld.anim.poke ? currentWorld.anim.poke(eye, dir) : null;
+
+        // If direct raycast missed, handle scene-specific fallbacks
+        if (!hit && currentWorld.id === 'burn' && currentWorld.lab?.fire) {
+          const sparkP = [
+            cam.target[0] + (Math.random() - 0.5) * 4,
+            0.4,
+            cam.target[2] + (Math.random() - 0.5) * 4
+          ];
+          currentWorld.lab.fire.light(sparkP, 0.9);
+          hit = { p: sparkP };
+        } else if (!hit && currentWorld.anim?.poke) {
+          hit = currentWorld.anim.poke(eye, [-back[0], -back[1], -back[2]]);
+        }
 
         // Flash poke feedback
         const prevText = statusText.textContent;
-        setStatus(hit ? '✨ Poked diorama object!' : '👋 Poked scene surface', false);
+        setStatus(hit ? (currentWorld.id === 'burn' ? '🔥 Ignited fire & embers!' : '✨ Poked diorama object!') : '👋 Poked scene surface', false);
         setTimeout(() => {
-          if (statusText.textContent.startsWith('✨') || statusText.textContent.startsWith('👋')) {
+          if (statusText.textContent.startsWith('🔥') || statusText.textContent.startsWith('✨') || statusText.textContent.startsWith('👋')) {
             statusText.textContent = prevText;
           }
         }, 1200);
@@ -803,30 +822,56 @@ npm run build</code>
       if (!currentWorld || !renderer) return;
 
       if (prevTimestamp !== undefined && !paused) {
-        lag += Math.min(0.1, (now - prevTimestamp) / 1000);
+        lag += Math.min(0.08, (now - prevTimestamp) / 1000);
       }
       prevTimestamp = now;
 
-      while (lag >= step) {
+      // Bound physics steps to prevent death-spiral lag
+      const maxSteps = 3;
+      let stepsCount = 0;
+      while (lag >= step && stepsCount < maxSteps) {
         time += step;
+        window.time = time;
         if (currentWorld.anim && currentWorld.anim.update) {
           currentWorld.anim.update(step, time);
         }
         lag -= step;
+        stepsCount++;
       }
+      if (lag >= step) lag = 0; // discard excessive lag
+
+      // Harvest modified rows for efficient WebGL upload & depth-sorting
+      let changedRows = undefined;
+      if (currentWorld.anim && currentWorld.anim.rows) {
+        const r = currentWorld.anim.rows;
+        const dirty = [];
+        for (let i = 0; i < r.length; i++) {
+          if (r[i]) {
+            dirty.push(i);
+            r[i] = 0;
+          }
+        }
+        changedRows = dirty;
+      }
+
+      // Subtle breathing camera sway when idle to keep diorama feeling alive
+      const sway = currentWorld.cam?.sway || 0;
+      const swayYaw = dragStart ? 0 : Math.sin(time * 0.7) * sway * 0.04;
+      const swayPitch = dragStart ? 0 : Math.cos(time * 0.5) * sway * 0.02;
 
       try {
         renderer.render(currentWorld, {
           width: renderW,
           height: renderH,
           time,
+          changedRows,
           dither: enableDither ? (currentWorld.dither ?? 0.25) : 0,
           camera: {
             ...currentWorld.cam,
             target: cam.target,
             dist: cam.dist,
-            pitch: cam.pitch,
-            yaw: cam.yaw
+            pitch: cam.pitch + swayPitch,
+            yaw: cam.yaw + swayYaw
           }
         });
       } catch (renderError) {
