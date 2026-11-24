@@ -20,12 +20,21 @@
   <h1>Inkwell Rebirth</h1>
   <div class="controls">
     <label>Scene <select id="scene"></select></label>
+    <label>Resolution <select id="resolution">
+      <option value="1">1x (240×150 Retro)</option>
+      <option value="2" selected>2x (480×300 Crisp)</option>
+      <option value="3">3x (720×450 HD)</option>
+      <option value="4">4x (960×600 Ultra)</option>
+    </select></label>
     <button id="play" disabled>Pause</button>
     <button id="reset" disabled>Reset camera</button>
     <label id="follow-control" hidden><input id="follow" type="checkbox"> Follow the pilgrim</label>
   </div>
-  <canvas id="view" width="240" height="150" tabindex="0" aria-label="Live scene"></canvas>
+  <canvas id="view" width="480" height="300" tabindex="0" aria-label="Live scene"></canvas>
   <p id="controls">Drag to orbit. Scroll to zoom.</p>
+  <p style="font-size:0.85rem;color:#829b9b;margin-top:-6px;">
+    Looking for fluid optics & dynamic wave reflections? Try <a href="../water-garden.html">🌊 Water Garden (Live Reflections & Optics)</a>
+  </p>
   <output id="status" role="status">Loading Ink Studio…</output>
   <p><a href="README.md">Scene sources and export commands</a></p>
 </main>

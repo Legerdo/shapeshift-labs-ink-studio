@@ -37,6 +37,7 @@ function start(world, kit, entry, from, view) {
   const home = { ...world.cam, ...view, dist: world.cam.dist / (view.zoom ?? 1) };
   const camera = { ...home }, keys = new Set();
   const control = world.rebirthInput;
+  const resSelect = $('resolution');
   const renderer = createRenderer(canvas, { toolkit: kit });
   let time = 0, lag = 0, previous, paused = false, drag, report;
 
@@ -54,7 +55,7 @@ function start(world, kit, entry, from, view) {
   while (time + step / 2 < from) advance();
   if (control) {
     $('follow-control').hidden = false;
-    $('controls').textContent += ' Focus the picture and use W A S D to walk. Hold left Shift to run.';
+    $('controls').textContent = 'Drag to orbit · Scroll to zoom · Focus canvas and use W A S D to walk (Left Shift to run).';
     canvas.addEventListener('keydown', event => {
       if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ShiftLeft'].includes(event.code)) {
         keys.add(event.code);
@@ -63,6 +64,9 @@ function start(world, kit, entry, from, view) {
     });
     window.addEventListener('keyup', event => keys.delete(event.code));
     canvas.addEventListener('blur', () => keys.clear());
+  } else {
+    $('follow-control').hidden = true;
+    $('controls').textContent = 'Drag to orbit · Scroll to zoom · (Ambient diorama · Playable character available in Burning Sand, Frozen Angel & Last Transmission)';
   }
 
   $('play').disabled = $('reset').disabled = false;
@@ -95,9 +99,12 @@ function start(world, kit, entry, from, view) {
       lag -= step;
     }
     const follow = control && $('follow').checked;
+    const scale = Number(resSelect?.value || 2);
+    const renderWidth = Math.round(240 * scale);
+    const renderHeight = Math.round(150 * scale);
     try {
       renderer.render(world, {
-        width: 240, height: 150, time, colored: false, dither: world.dither, damp: false, stepAnimation: false,
+        width: renderWidth, height: renderHeight, time, colored: false, dither: world.dither, damp: false, stepAnimation: false,
         camera: { ...camera, ...(follow && { target: world.dynamic.focus }) },
         ...(!report && { onCompatibility: value => { report = value; } })
       });

@@ -8,7 +8,8 @@ function rebirthGallery(kit) {
       { target: [3, 5, 1], yaw: -.22, pitch: .16, zoom: .65 }),
     entry('frozen-angel', commonJS ? require('./frozen-angel.js') : rebirthAngel, .4,
       { target: [0, 15, -14], yaw: .15, pitch: .11, zoom: .52 }),
-    entry('garden', commonJS ? require('./garden.js') : rebirthGarden, 2.7),
+    entry('garden', commonJS ? require('./garden.js') : rebirthGarden, 2.7,
+      { zoom: 1.22 }),
     entry('last-transmission', commonJS ? require('./last-transmission.js') : rebirthTransmission, 4.5)
   ];
 }
